@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Data
+data/vector_db/*
+!data/vector_db/.gitkeep
+data/docs/*
+!data/docs/.gitkeep
+!data/docs/sample_faq.txt
+
+# Logs
+*.log
+data/sessions.json
+app/data/sessions.json
