@@ -1,5 +1,7 @@
 services:
   backend:
+    platform: linux/amd64
+    image: agent-support-backend:latest
     build:
       context: ./customer_service_ai
       dockerfile: Dockerfile
@@ -8,10 +10,12 @@ services:
     volumes:
       - chat_data:/app/data
     env_file:
-      - ./customer_service_ai/.env
+      - ./.env
     restart: unless-stopped
 
   frontend:
+    platform: linux/amd64
+    image: agent-support-frontend:latest
     build:
       context: ./chat-ui
       dockerfile: Dockerfile
