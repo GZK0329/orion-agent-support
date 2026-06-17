@@ -1,0 +1,25 @@
+services:
+  backend:
+    build:
+      context: ./customer_service_ai
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - chat_data:/app/data
+    env_file:
+      - ./customer_service_ai/.env
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./chat-ui
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  chat_data:

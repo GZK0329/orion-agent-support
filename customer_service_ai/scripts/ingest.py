@@ -94,10 +94,10 @@ def load_documents(docs_dir: Path) -> list[Document]:
 
 def split_documents(documents: list[Document]) -> list[Document]:
     """将文档切分为固定大小的文本块，并在 metadata 中标记来源"""
-    # BAAI/bge-large-zh-v1.5 最大输入 512 tokens（约 600~800 中文字符）
+    # BAAI/bge-m3 最大输入 8192 tokens，API 文档表格丰富设为 1500
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100,
+        chunk_size=1500,
+        chunk_overlap=200,
         separators=["\n\n", "\n", "。", "；", " ", ""],
     )
     return text_splitter.split_documents(documents)

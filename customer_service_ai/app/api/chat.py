@@ -24,13 +24,14 @@ router = APIRouter(prefix="/chat", tags=["智能客服对话"])
 async def chat(request: ChatRequest) -> ChatResponse:
     """同步问答接口"""
     session_id = request.session_id
+    client_id = request.client_id
     try:
         history = session_store.get_history(session_id)
         answer = agent_chat(request.question, chat_history=history)
         session_store.add_messages(session_id, [
             HumanMessage(content=request.question),
             AIMessage(content=answer),
-        ])
+        ], client_id=client_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -47,6 +48,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 async def chat_stream(request: ChatRequest):
     """流式问答接口"""
     session_id = request.session_id
+    client_id = request.client_id
 
     async def event_stream():
         try:
@@ -69,7 +71,7 @@ async def chat_stream(request: ChatRequest):
             session_store.add_messages(session_id, [
                 HumanMessage(content=request.question),
                 AIMessage(content=answer),
-            ])
+            ], client_id=client_id)
 
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"

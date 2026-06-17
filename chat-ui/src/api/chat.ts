@@ -80,8 +80,9 @@ export interface HistoryMessage {
   content: string
 }
 
-export async function fetchSessions(): Promise<SessionItem[]> {
-  const resp = await fetch('/history/')
+export async function fetchSessions(clientId?: string): Promise<SessionItem[]> {
+  const params = clientId ? `?client_id=${encodeURIComponent(clientId)}` : ''
+  const resp = await fetch(`/history/${params}`)
   if (!resp.ok) return []
   return resp.json()
 }
@@ -92,7 +93,8 @@ export async function fetchSessionMessages(sessionId: string): Promise<HistoryMe
   return resp.json()
 }
 
-export async function deleteSession(sessionId: string): Promise<boolean> {
-  const resp = await fetch(`/history/${sessionId}`, { method: 'DELETE' })
+export async function deleteSession(sessionId: string, clientId?: string): Promise<boolean> {
+  const params = clientId ? `?client_id=${encodeURIComponent(clientId)}` : ''
+  const resp = await fetch(`/history/${sessionId}${params}`, { method: 'DELETE' })
   return resp.ok
 }

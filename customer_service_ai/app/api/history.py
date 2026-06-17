@@ -2,7 +2,7 @@
 历史对话 API
 提供会话列表查询、消息查询、删除功能
 """
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.memory.session_store import session_store
@@ -23,9 +23,9 @@ class MessageItem(BaseModel):
 
 
 @router.get("/", response_model=list[SessionItem])
-async def list_sessions():
-    """获取所有历史会话摘要"""
-    return session_store.list_sessions()
+async def list_sessions(client_id: str = Query(default="")):
+    """获取当前用户的历史会话摘要"""
+    return session_store.list_sessions(client_id=client_id or None)
 
 
 @router.get("/{session_id}", response_model=list[MessageItem])
@@ -38,14 +38,14 @@ async def get_session_messages(session_id: str):
     for m in raw:
         result.append({
             "type": m.get("type", ""),
-            "content": m.get("data", {}).get("content", ""),
+            "content": m.get("content", ""),
         })
     return result
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_session(session_id: str):
+async def delete_session(session_id: str, client_id: str = Query(default="")):
     """删除指定会话"""
-    deleted = session_store.delete_session(session_id)
+    deleted = session_store.delete_session(session_id, client_id=client_id or None)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")

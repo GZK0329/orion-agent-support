@@ -30,15 +30,23 @@ class Settings(BaseSettings):
 
     # 向量库配置
     vector_db_path: str = "./data/vector_db"
-    collection_name: str = "customer_service_kb"
+    collection_name: str = "scheduling_kb"
 
     # 检索配置
-    retrieval_top_k: int = 3
+    retrieval_top_k: int = 8
+    retrieval_fetch_k: int = 30  # MMR 候选池大小
+    retrieval_lambda_mult: float = 0.5  # MMR 多样性系数（0=纯多样，1=纯相关）
 
     # 业务 API 配置（为空时 Tool 使用 mock 数据）
     order_api_url: str = ""
     logistics_api_url: str = ""
     return_api_url: str = ""
+
+    # 数据库配置（默认 SQLite 零配置，部署可换 PostgreSQL）
+    database_url: str = "sqlite:///./data/chat.db"
+
+    # 管理员密码（为空则不开启管理员功能）
+    admin_password: str = ""
 
     # 服务配置
     app_host: str = "0.0.0.0"

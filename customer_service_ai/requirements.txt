@@ -10,6 +10,10 @@ chromadb==0.5.23
 # Web API
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+python-multipart==0.0.18
+
+# Database（SQLAlchemy 已通过 langchain-community 安装）
+# 如果用 PostgreSQL，需额外安装：psycopg2-binary==2.9.10
 
 # Config & Utils
 python-dotenv==1.0.1

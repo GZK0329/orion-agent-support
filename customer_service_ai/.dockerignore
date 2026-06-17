@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+venv
+.venv-py311
+__pycache__
+*.pyc
+.idea
+.vscode
+.DS_Store
+data/vector_db/*
+data/chat.db
+README.md

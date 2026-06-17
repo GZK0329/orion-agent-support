@@ -19,6 +19,11 @@ class ChatRequest(BaseModel):
         max_length=100,
         description="会话 ID，同一会话内 AI 会记住之前的对话",
     )
+    client_id: str = Field(
+        default="anonymous",
+        max_length=100,
+        description="客户端标识，用于用户隔离",
+    )
 
 
 class ChatResponse(BaseModel):

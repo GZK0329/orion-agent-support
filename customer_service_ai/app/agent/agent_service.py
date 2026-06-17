@@ -11,19 +11,13 @@ from langchain_core.tools import BaseTool
 from app.prompts.agent_system import AGENT_SYSTEM_PROMPT
 from app.services.llm_service import get_llm
 from app.tools.human_tool import transfer_to_human
-from app.tools.knowledge_tool import query_knowledge_base
-from app.tools.logistics_tool import query_logistics
-from app.tools.order_tool import query_order_status
-from app.tools.return_tool import apply_return
+from app.tools.knowledge_tool import search_documentation
 
 
 def get_tools() -> List[BaseTool]:
     """获取所有可用的 Tool 列表"""
     return [
-        query_knowledge_base,
-        query_order_status,
-        query_logistics,
-        apply_return,
+        search_documentation,
         transfer_to_human,
     ]
 

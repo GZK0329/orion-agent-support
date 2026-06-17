@@ -8,6 +8,7 @@ export interface Message {
 export interface ChatRequest {
   question: string
   session_id: string
+  client_id?: string
 }
 
 export interface ChatResponse {

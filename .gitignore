@@ -1,6 +1,7 @@
 # Python virtual environment
 .venv/
 venv/
+.venv-py311/
 
 # IDE
 .idea/
@@ -13,3 +14,20 @@ venv/
 
 # Logs
 *.log
+
+# Environment (API keys, passwords)
+.env
+
+# Sensitive documents (IPs, credentials, internal info)
+data/docs/
+**/data/docs/
+
+# Vector database (auto-generated)
+data/vector_db/
+
+# Chat database (auto-generated)
+data/chat.db
+*.db
+
+# File index (auto-generated)
+data/vector_db/.file_index.json

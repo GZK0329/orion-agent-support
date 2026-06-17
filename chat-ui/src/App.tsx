@@ -1,12 +1,18 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ChatBubble from './components/ChatBubble'
 import ChatInput from './components/ChatInput'
+import DocManager from './components/DocManager'
+import LoginModal from './components/LoginModal'
 import { sendMessageStream, fetchSessions, deleteSession as apiDeleteSession } from './api/chat'
+import { fetchDemos } from './api/demos'
 import type { Message } from './types/chat'
+import type { DemoItem } from './api/demos'
 
 // ---- 工具 ----
 
 const SESSION_KEY = 'chat_session_id'
+const CLIENT_ID_KEY = 'chat_client_id'
+const ADMIN_TOKEN_KEY = 'admin_token'
 const CONV_KEY = 'chat_conversations'
 
 function getSessionId(): string {
@@ -18,6 +24,21 @@ function resetSession(): string {
   const sid = crypto.randomUUID()
   localStorage.setItem(SESSION_KEY, sid)
   return sid
+}
+
+function getClientId(): string {
+  const cid = localStorage.getItem(CLIENT_ID_KEY) || crypto.randomUUID()
+  localStorage.setItem(CLIENT_ID_KEY, cid)
+  return cid
+}
+
+function loadAdminToken(): string {
+  return localStorage.getItem(ADMIN_TOKEN_KEY) || ''
+}
+
+function saveAdminToken(token: string) {
+  if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token)
+  else localStorage.removeItem(ADMIN_TOKEN_KEY)
 }
 
 function loadMessages(sid: string): Message[] {
@@ -66,12 +87,21 @@ export default function App() {
   })
   const [loading, setLoading] = useState(false)
   const [histOpen, setHistOpen] = useState(false)
+  const [docOpen, setDocOpen] = useState(false)
   const [convos, setConvos] = useState<ConvInfo[]>(loadConvos)
+  const [demos, setDemos] = useState<DemoItem[]>([])
+  const [adminToken, setAdminToken] = useState(loadAdminToken)
+  const [loginOpen, setLoginOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  const cid = getClientId()
+
+  // 首次挂载：获取示例问答
+  useEffect(() => { fetchDemos().then(setDemos).catch(() => {}) }, [])
 
   // 首次挂载：从后端同步会话列表（补充 localStorage 里没有的数据）
   useEffect(() => {
-    fetchSessions().then((list) => {
+    fetchSessions(cid).then((list) => {
       if (list.length === 0) return
       setConvos((prev) => {
         const merged = [...prev]
@@ -127,7 +157,7 @@ export default function App() {
     let fullAnswer = ''
 
     await sendMessageStream(
-      { question: text, session_id: sessionId },
+      { question: text, session_id: sessionId, client_id: cid },
       {
         onToken: (token) => {
           fullAnswer += token
@@ -192,16 +222,27 @@ export default function App() {
       return list
     })
     localStorage.removeItem(`chat_msgs_${sid}`)
-    apiDeleteSession(sid).catch(() => {})
+    apiDeleteSession(sid, cid).catch(() => {})
   }
 
+  const handleLogin = (token: string) => {
+    setAdminToken(token)
+    saveAdminToken(token)
+  }
+
+  const handleLogout = () => {
+    setAdminToken('')
+    saveAdminToken('')
+  }
+
+  const isAdmin = !!adminToken
   const hasMessages = messages.length > 0 && messages.some((m) => m.content)
 
   return (
     <div className="relative flex h-screen flex-col bg-[#fafafa]">
       {histOpen && <div className="fixed inset-0 z-20 bg-black/20" onClick={() => setHistOpen(false)} />}
 
-      <aside className={`fixed left-0 top-0 z-30 flex h-full w-72 flex-col bg-white shadow-xl transition-transform duration-300 ${
+      <aside className={`fixed left-0 top-0 z-30 flex h-full w-72 max-w-[85vw] flex-col bg-white shadow-xl transition-transform duration-300 ${
         histOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
@@ -241,30 +282,78 @@ export default function App() {
         </div>
       </aside>
 
-      <header className="flex items-center justify-between border-b border-[#eeeef0] bg-white px-5 py-3">
-        <div className="flex items-center gap-2.5">
+      <header className="flex items-center justify-between border-b border-[#eeeef0] bg-white px-3 sm:px-5 py-3">
+        <div className="flex items-center gap-2">
           <button className="text-gray-500 hover:text-gray-700" onClick={() => setHistOpen(true)}>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           </button>
           <div className="flex h-8 w-8 items-center justify-center rounded-xl doubao-gradient text-[12px] font-bold text-white shadow-sm">AI</div>
-          <span className="text-[15px] font-semibold text-[#1f1f1f]">智能客服助手</span>
+          <span className="text-[15px] font-semibold text-[#1f1f1f]">调度组件助手</span>
         </div>
-        <button onClick={handleNewChat} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-[#666] transition-colors hover:bg-[#f5f5f5]">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-            <path d="M10.362 1.093a.75.75 0 0 0-.724 0L2.523 5.018 10 9.143l7.477-4.125-7.115-3.925ZM18 6.443l-7.25 4v8.25l6.862-3.786A.75.75 0 0 0 18 14.25V6.443ZM9.25 18.693v-8.25l-7.25-4v7.807a.75.75 0 0 0 .388.657l6.862 3.786Z" />
-          </svg>
-          新对话
-        </button>
+        <div className="flex items-center gap-1">
+          {isAdmin ? (
+            <>
+              <button onClick={() => setDocOpen(true)} className="hidden sm:flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-[#6366f1] transition-colors hover:bg-[#eef2ff]">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path d="M4.5 3.75a3 3 0 0 0-3 3v.75h8.25v-.75A3 3 0 0 0 6.75 3.75h-2.25Z" />
+                  <path d="M18.75 7.5v-.75a3 3 0 0 0-3-3h-2.25a3 3 0 0 0-3 3v.75h8.25Z" />
+                  <path d="M1.5 16.5a3 3 0 0 0 3 3h11.25a3 3 0 0 0 3-3v-7.5H1.5v7.5Z" />
+                </svg>
+                文档管理
+              </button>
+              <button onClick={handleLogout} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-[#666] transition-colors hover:bg-[#f5f5f5]">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path d="M10 2a.75.75 0 0 1 .75.75v6.5L13.1 7.15a.75.75 0 0 1 1.05 1.05l-3.5 3.5a.75.75 0 0 1-1.05 0l-3.5-3.5a.75.75 0 0 1 1.05-1.05l2.35 2.1V2.75A.75.75 0 0 1 10 2Z" />
+                  <path d="M3.5 12a.75.75 0 0 1 .75.75v2.5c0 .69.56 1.25 1.25 1.25h9c.69 0 1.25-.56 1.25-1.25v-2.5a.75.75 0 0 1 1.5 0v2.5A2.75 2.75 0 0 1 14.5 18h-9A2.75 2.75 0 0 1 2.75 15.25v-2.5A.75.75 0 0 1 3.5 12Z" />
+                </svg>
+                退出管理
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setLoginOpen(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-[#666] transition-colors hover:bg-[#f5f5f5]">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.957 9.957 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z" />
+              </svg>
+              管理员
+            </button>
+          )}
+          <button onClick={handleNewChat} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-[#666] transition-colors hover:bg-[#f5f5f5]">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path d="M10.362 1.093a.75.75 0 0 0-.724 0L2.523 5.018 10 9.143l7.477-4.125-7.115-3.925ZM18 6.443l-7.25 4v8.25l6.862-3.786A.75.75 0 0 0 18 14.25V6.443ZM9.25 18.693v-8.25l-7.25-4v7.807a.75.75 0 0 0 .388.657l6.862 3.786Z" />
+            </svg>
+            新对话
+          </button>
+        </div>
       </header>
 
       <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-5 py-3">
+        <div className="mx-auto max-w-3xl px-3 sm:px-5 py-3">
           {!hasMessages && !loading && (
-            <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+            <div className="flex flex-col items-center pt-12 sm:pt-20 text-gray-400">
               <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl doubao-gradient text-lg font-bold text-white shadow-sm">AI</div>
-              <p className="text-sm">有什么可以帮助您的？</p>
+              <p className="text-sm mb-8">您好，请问您想查询哪个调度接口的文档？</p>
+
+              <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-3 px-2">
+                {demos.slice(0, 6).map((d, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(d.question)}
+                    className="group text-left rounded-xl border border-[#eeeef0] bg-white p-4 shadow-sm transition-all hover:border-[#a5b4fc] hover:shadow-md hover:-translate-y-0.5"
+                  >
+                    <span className="inline-block rounded-md bg-[#eef2ff] px-2 py-0.5 text-xs font-medium text-[#6366f1] mb-2">
+                      示例 {i + 1}
+                    </span>
+                    <p className="text-sm font-medium text-[#1f1f1f] group-hover:text-[#6366f1] transition-colors">
+                      {d.title}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400 line-clamp-2">
+                      {d.question}
+                    </p>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {messages.map((msg, i) => (
@@ -283,6 +372,8 @@ export default function App() {
         </div>
       </div>
 
+      <DocManager open={docOpen} onClose={() => setDocOpen(false)} adminToken={adminToken} />
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onLogin={handleLogin} />
       <ChatInput onSend={handleSend} disabled={loading} />
     </div>
   )

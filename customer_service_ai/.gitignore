@@ -30,3 +30,4 @@ data/docs/*
 *.log
 data/sessions.json
 app/data/sessions.json
+*.db

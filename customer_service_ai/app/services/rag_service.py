@@ -7,7 +7,9 @@ from typing import List
 
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.retrievers import MultiQueryRetriever
 from langchain.schema import Document
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_chroma import Chroma
 
 from app.config import settings
@@ -60,14 +62,46 @@ def delete_by_source(source: str) -> None:
     vector_store.delete(where={"source": source})
 
 
-def get_rag_chain():
-    """构建 RAG 问答链"""
-    vector_store = get_vector_store()
-    retriever = vector_store.as_retriever(
-        search_kwargs={"k": settings.retrieval_top_k}
+def _make_base_retriever(vector_store: Chroma):
+    """构建 MMR 基础检索器（多样性优先）"""
+    return vector_store.as_retriever(
+        search_type="mmr",
+        search_kwargs={
+            "k": settings.retrieval_top_k,
+            "fetch_k": settings.retrieval_fetch_k,
+            "lambda_mult": settings.retrieval_lambda_mult,
+        },
     )
 
+
+def get_rag_chain():
+    """
+    构建 RAG 问答链
+    使用 MultiQueryRetriever（多查询改写+MMR）提升召回率
+    """
+    vector_store = get_vector_store()
+    base_retriever = _make_base_retriever(vector_store)
+
     llm = get_llm()
+
+    # 中文多查询改写 prompt：生成 3 个不同表述的中文搜索词
+    MQ_PROMPT = ChatPromptTemplate.from_messages([
+        ("system", (
+            "你是一个中文文档检索助手。你的任务是根据用户的问题，生成 3 个不同的中文搜索词，"
+            "用于从知识库中检索相关文档。这些搜索词应该从不同角度改写原问题，"
+            "包含可能的接口名（如 jobPlan、listJobPlan 等）、功能描述词和业务术语。"
+            "每个搜索词一行，不要编号。"
+        )),
+        ("human", "{question}"),
+    ])
+
+    retriever = MultiQueryRetriever.from_llm(
+        retriever=base_retriever,
+        llm=llm,
+        prompt=MQ_PROMPT,
+        include_original=True,
+    )
+
     prompt = get_rag_prompt()
     combine_docs_chain = create_stuff_documents_chain(llm, prompt)
 
