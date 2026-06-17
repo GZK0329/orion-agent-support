@@ -10,24 +10,28 @@ import type { DemoItem } from './api/demos'
 
 // ---- 工具 ----
 
+function uuid(): string {
+  try { return crypto.randomUUID() } catch { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16) }) }
+}
+
 const SESSION_KEY = 'chat_session_id'
 const CLIENT_ID_KEY = 'chat_client_id'
 const ADMIN_TOKEN_KEY = 'admin_token'
 const CONV_KEY = 'chat_conversations'
 
 function getSessionId(): string {
-  const sid = localStorage.getItem(SESSION_KEY) || crypto.randomUUID()
+  const sid = localStorage.getItem(SESSION_KEY) || uuid()
   localStorage.setItem(SESSION_KEY, sid)
   return sid
 }
 function resetSession(): string {
-  const sid = crypto.randomUUID()
+  const sid = uuid()
   localStorage.setItem(SESSION_KEY, sid)
   return sid
 }
 
 function getClientId(): string {
-  const cid = localStorage.getItem(CLIENT_ID_KEY) || crypto.randomUUID()
+  const cid = localStorage.getItem(CLIENT_ID_KEY) || uuid()
   localStorage.setItem(CLIENT_ID_KEY, cid)
   return cid
 }
@@ -143,10 +147,10 @@ export default function App() {
 
   const handleSend = async (text: string) => {
     const userMsg: Message = {
-      id: crypto.randomUUID(), role: 'user', content: text, createdAt: Date.now(),
+      id: uuid(), role: 'user', content: text, createdAt: Date.now(),
     }
     const aiMsg: Message = {
-      id: crypto.randomUUID(), role: 'assistant', content: '', createdAt: Date.now(),
+      id: uuid(), role: 'assistant', content: '', createdAt: Date.now(),
     }
     const next = [...messages, userMsg, aiMsg]
     setMessages(next)

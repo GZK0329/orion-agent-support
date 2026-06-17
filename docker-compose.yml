@@ -1,7 +1,7 @@
 services:
   backend:
     platform: linux/amd64
-    image: agent-support-backend:latest
+    image: ${REGISTRY_URL:-}agent-support-backend:latest
     build:
       context: ./customer_service_ai
       dockerfile: Dockerfile
@@ -10,17 +10,17 @@ services:
     volumes:
       - chat_data:/app/data
     env_file:
-      - ./.env
+      - ./customer_service_ai/.env
     restart: unless-stopped
 
   frontend:
     platform: linux/amd64
-    image: agent-support-frontend:latest
+    image: ${REGISTRY_URL:-}agent-support-frontend:latest
     build:
       context: ./chat-ui
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "8083:80"
     depends_on:
       - backend
     restart: unless-stopped

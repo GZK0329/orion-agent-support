@@ -3,6 +3,13 @@ set -e
 
 cd "$(dirname "$0")"
 
+# 加载 .env 中的变量（如 REGISTRY_URL）
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+
 DOCKER_CONFIG="$HOME/.docker/config.json"
 
 # 构建时临时清除 Docker Desktop 全局代理，避免阻断容器内网络
@@ -119,8 +126,8 @@ case "$CMD" in
     docker compose build
     _restore_docker_proxy
     mkdir -p /tmp/agent-support-images
-    docker save agent-support-backend:latest -o /tmp/agent-support-images/backend.tar
-    docker save agent-support-frontend:latest -o /tmp/agent-support-images/frontend.tar
+    docker save "${REGISTRY_URL:-}agent-support-backend:latest" -o /tmp/agent-support-images/backend.tar
+    docker save "${REGISTRY_URL:-}agent-support-frontend:latest" -o /tmp/agent-support-images/frontend.tar
     echo "✅ 已导出："
     ls -lh /tmp/agent-support-images/
     echo ""
@@ -133,11 +140,35 @@ case "$CMD" in
     echo ""
     echo "  方式 B — scp："
     echo "    scp -r /tmp/agent-support-images user@server:/tmp/"
-    echo "    scp docker-compose.yml .env user@server:/opt/agent-support/"
+    echo "    scp docker-compose.yml customer_service_ai/.env user@server:/opt/agent-support/"
     echo "    ssh user@server"
     echo "    docker load -i /tmp/agent-support-images/backend.tar"
     echo "    docker load -i /tmp/agent-support-images/frontend.tar"
     echo "    cd /opt/agent-support && docker compose up -d"
+    echo ""
+    echo "  方式 C — 内网 registry："
+    echo "    .env 中设置 REGISTRY_URL=<your-registry>:5000/"
+    echo "    ./start.sh push-registry"
+    ;;
+  push-registry)
+    if [ -z "${REGISTRY_URL:-}" ]; then
+      echo "❌ 请先在 .env 中设置 REGISTRY_URL，例如："
+      echo "   REGISTRY_URL=10.0.0.1:5000/"
+      exit 1
+    fi
+    _build_frontend
+    _clear_docker_proxy
+    echo "🚀 构建并推送镜像到 ${REGISTRY_URL}..."
+    docker compose build
+    docker push "${REGISTRY_URL}agent-support-backend:latest"
+    docker push "${REGISTRY_URL}agent-support-frontend:latest"
+    _restore_docker_proxy
+    echo "✅ 推送完成！"
+    echo ""
+    echo "开发服务器上操作："
+    echo "  1. 确保 /etc/docker/daemon.json 配置了 insecure-registries: [\"${REGISTRY_URL%/}\"]"
+    echo "  2. 上传 docker-compose.yml 和 customer_service_ai/.env 到 /opt/agent-support/"
+    echo "  3. cd /opt/agent-support && docker compose up -d"
     ;;
   *)
     echo "用法: ./start.sh [命令]"
@@ -152,5 +183,6 @@ case "$CMD" in
     echo "  status    查看服务状态"
     echo "  shell     进入后端容器"
     echo "  export    构建并导出 tar，供服务器 docker load"
+    echo "  push-registry  推送到 .env 中 REGISTRY_URL 指定的内网仓库"
     ;;
 esac

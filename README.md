@@ -10,7 +10,7 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=fff)](https://react.dev)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[快速开始](#rocket-快速开始) · [功能](#sparkles-功能) · [架构](#building_construction-架构) · [API](#open_book-api) · [FAQ](#question-faq)
+[快速开始](#rocket-快速开始) · [功能](#sparkles-功能) · [架构](#building_construction-架构) · [API](#open_book-api)
 
 </div>
 
@@ -151,42 +151,6 @@ MMR Retriever
 
 **有效放大比**：4 路 × 每路 8 个 → 最多 32 段上下文，搜索广度是初始版本（1 路 × 3 个）的 **10×**。
 
-### 2. RAG Prompt 不对口
-
-**问题**：RAG 链路仍是电商客服 prompt，"控制在 300 字以内"、"建议联系人工客服"——与 API 文档场景不匹配。
-
-**解决**：重写为"调度组件接口文档助手"，增加结构化输出格式指导。
-
-### 3. Embedding 兼容性
-
-**问题**：SiliconFlow 不兼容 LangChain 传递的 `dimensions` 等参数，返回错误码 20015。
-
-**解决**：实现 `OpenAICompatibleEmbeddings`，只传 `model` + `input`，`BATCH_SIZE=20` 分批处理。
-
-### 4. Agent Prompt 花括号转义
-
-**问题**：JSON 示例 `{"jobName": "myJob"}` 被 LangChain 解析为模板变量。
-
-**解决**：`{` → `{{`，`}` → `}}`。
-
-### 5. Vite 代理遗漏
-
-**问题**：仅配了 `/chat`，`/documents` `/history` `/demos` `/auth` 全返回 404。
-
-**解决**：补充全部代理路径。
-
-### 6. 用户隔离
-
-**问题**：所有用户共享会话历史。
-
-**解决**：浏览器自动生成 `client_id`，`DBSession` 表加列过滤。
-
-### 7. 管理员权限
-
-**问题**：文档上传不应开放给普通用户。
-
-**解决**：`ADMIN_PASSWORD` 配置 + `POST /auth/login` + 文档 API 鉴权。
-
 ---
 
 ## :file_folder: 目录结构
@@ -218,39 +182,4 @@ agent-support/
 └── README.md
 ```
 
----
 
-## :question: FAQ
-
-**Q: 用的是什么 LLM？**  
-A: DeepSeek V4 Flash（`deepseek-v4-flash`），通过 OpenAI 兼容 API 调用。
-
-**Q: Embedding 模型是什么？**  
-A: `BAAI/bge-m3`，通过 SiliconFlow API 调用，支持 8192 tokens。
-
-**Q: 支持哪些文档格式？**  
-A: `.md` `.txt` `.pdf`，放到 `data/docs/`，全量或增量导入。
-
-**Q: 如何保证检索不偏科？**  
-A: MMR（多样性优先）+ MultiQueryRetriever（中文改写+多路搜索）。
-
-**Q: 文档有敏感信息怎么办？**  
-A: `data/docs/` 已在 `.gitignore` 中排除，不会提交到 Git。
-
----
-
-## :handshake: 贡献
-
-1. Fork 项目
-2. 创建特性分支：`git checkout -b feature/my-feature`
-3. 提交：`git commit -m 'feat: add my feature'`
-4. Push：`git push origin feature/my-feature`
-5. 提交 Pull Request
-
----
-
-<div align="center">
-
-**基于 [LangChain](https://langchain.com) + [FastAPI](https://fastapi.tiangolo.com) + [React](https://react.dev) 构建**
-
-</div>

@@ -17,6 +17,9 @@ __pycache__/
 # Logs
 *.log
 
+# Local tools and deployment scripts
+upload_server.py
+
 # Environment (API keys, passwords)
 .env
 
