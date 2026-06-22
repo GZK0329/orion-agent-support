@@ -12,6 +12,8 @@ from app.api.chat import router as chat_router
 from app.api.demos import router as demos_router
 from app.api.history import router as history_router
 from app.api.documents import router as documents_router
+from app.api.feedback import router as feedback_router
+from app.api.error_logs import router as error_logs_router
 from app.database import init_db
 
 
@@ -43,6 +45,8 @@ app.include_router(chat_router)
 app.include_router(demos_router)
 app.include_router(history_router)
 app.include_router(documents_router)
+app.include_router(feedback_router)
+app.include_router(error_logs_router)
 
 
 @app.get("/", summary="健康检查")

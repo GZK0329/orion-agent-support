@@ -31,3 +31,14 @@ class ChatResponse(BaseModel):
 
     answer: str = Field(..., description="AI 回答")
     session_id: str = Field(default="default", description="当前会话 ID")
+
+
+class FeedbackCreate(BaseModel):
+    """提交反馈请求"""
+
+    session_id: str = Field(default="default", max_length=100)
+    question: str = Field(..., min_length=1, max_length=10000)
+    answer: str = Field(..., min_length=1, max_length=100000)
+    feedback: str = Field(..., pattern=r"^(like|dislike)$")
+    comment: str | None = Field(default=None, max_length=1000)
+    source: str | None = Field(default=None, max_length=20)

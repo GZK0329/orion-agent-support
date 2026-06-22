@@ -35,7 +35,10 @@ class Settings(BaseSettings):
     # 检索配置
     retrieval_top_k: int = 8
     retrieval_fetch_k: int = 30  # MMR 候选池大小
-    retrieval_lambda_mult: float = 0.5  # MMR 多样性系数（0=纯多样，1=纯相关）
+    retrieval_lambda_mult: float = 0.5  # MMR 多样性系数
+
+    # 对话上下文配置
+    context_max_tokens: int = 8000  # 聊天历史最大 token 数，超出后截断最旧消息（0=纯多样，1=纯相关）
 
     # 业务 API 配置（为空时 Tool 使用 mock 数据）
     order_api_url: str = ""

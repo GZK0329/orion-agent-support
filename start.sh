@@ -170,6 +170,69 @@ case "$CMD" in
     echo "  2. 上传 docker-compose.yml 和 customer_service_ai/.env 到 /opt/agent-support/"
     echo "  3. cd /opt/agent-support && docker compose up -d"
     ;;
+  dev)
+    echo "🚀 启动本地开发环境..."
+    echo ""
+    set +e
+
+    # 清理旧后端进程
+    OLD_PIDS=$(lsof -ti :8000 -sTCP:LISTEN 2>/dev/null) || true
+    if [ -n "$OLD_PIDS" ]; then
+      echo "⚠️  端口 8000 已被占用，正在清理旧进程 (PID: $OLD_PIDS)..."
+      kill $OLD_PIDS 2>/dev/null
+      sleep 1
+      # 如果没杀掉，强制 kill
+      STILL=$(lsof -ti :8000 -sTCP:LISTEN 2>/dev/null) || true
+      if [ -n "$STILL" ]; then
+        kill -9 $STILL 2>/dev/null || true
+      fi
+    fi
+
+    # 后端: 创建 venv + 安装依赖 + 启动
+    BACKEND_DIR="customer_service_ai"
+    if [ ! -d "$BACKEND_DIR/.venv" ]; then
+      echo "📦 创建 Python venv..."
+      python3 -m venv "$BACKEND_DIR/.venv"
+    fi
+    echo "📦 安装 Python 依赖..."
+    "$BACKEND_DIR/.venv/bin/pip" install -r "$BACKEND_DIR/requirements.txt" --quiet
+    echo "🟢 启动后端 (uvicorn --reload :8000)..."
+    PREV_DIR=$(pwd)
+    cd "$BACKEND_DIR"
+    .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+    BACKEND_PID=$!
+    cd "$PREV_DIR"
+
+    # 等待后端就绪
+    for i in $(seq 1 10); do
+      if curl -s http://127.0.0.1:8000/ > /dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    if ! kill -0 $BACKEND_PID 2>/dev/null; then
+      echo "❌ 后端启动失败，请检查端口冲突"
+      exit 1
+    fi
+
+    # 前端: 安装依赖 + 启动
+    echo "🟢 启动前端 (Vite dev server :5173)..."
+    cd chat-ui
+    npm install --silent
+    npm run dev &
+    FRONTEND_PID=$!
+    cd ..
+
+    echo ""
+    echo "✅ 本地开发环境已启动"
+    echo "   后端: http://localhost:8000  (热重载)"
+    echo "   前端: http://localhost:5173  (热重载，API 代理到 8000)"
+    echo ""
+    echo "按 Ctrl+C 停止"
+
+    trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; echo ''; echo '🛑 已停止'; exit" SIGINT SIGTERM
+    wait
+    ;;
   *)
     echo "用法: ./start.sh [命令]"
     echo ""
@@ -182,7 +245,8 @@ case "$CMD" in
     echo "  rebuild   强制重建镜像并启动"
     echo "  status    查看服务状态"
     echo "  shell     进入后端容器"
-    echo "  export    构建并导出 tar，供服务器 docker load"
-    echo "  push-registry  推送到 .env 中 REGISTRY_URL 指定的内网仓库"
+  echo "  dev       本地开发环境（uvicorn --reload + Vite dev server）"
+  echo "  export    构建并导出 tar，供服务器 docker load"
+  echo "  push-registry  推送到 .env 中 REGISTRY_URL 指定的内网仓库"
     ;;
 esac
