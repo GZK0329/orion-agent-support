@@ -33,6 +33,12 @@ class ChatResponse(BaseModel):
     session_id: str = Field(default="default", description="当前会话 ID")
 
 
+class ErrorResponse(BaseModel):
+    detail: str = Field(..., description="错误描述")
+    error_type: str | None = Field(default=None, description="错误类型")
+    request_id: str | None = Field(default=None, description="请求追踪 ID")
+
+
 class FeedbackCreate(BaseModel):
     """提交反馈请求"""
 

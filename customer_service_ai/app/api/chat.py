@@ -5,9 +5,10 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
+from loguru import logger
 
 from app.agent.agent_service import chat as agent_chat
 from app.config import settings
@@ -27,16 +28,20 @@ async def chat(request: ChatRequest) -> ChatResponse:
     session_id = request.session_id
     client_id = request.client_id
     try:
-        history = session_store.get_history(
+        history = await session_store.get_history(
             session_id, max_tokens=settings.context_max_tokens
         )
-        answer = agent_chat(request.question, chat_history=history)
-        session_store.add_messages(session_id, [
+        loop = asyncio.get_event_loop()
+        answer = await loop.run_in_executor(
+            None, agent_chat, request.question, history,
+        )
+        await session_store.add_messages(session_id, [
             HumanMessage(content=request.question),
             AIMessage(content=answer),
         ], client_id=client_id)
     except Exception as e:
-        session_store.add_error_log(
+        logger.opt(exception=True).error(f"chat 同步失败: {e}")
+        await session_store.add_error_log(
             session_id=session_id,
             client_id=client_id,
             question=request.question,
@@ -62,7 +67,7 @@ async def chat_stream(request: ChatRequest):
 
     async def event_stream():
         try:
-            history = session_store.get_history(
+            history = await session_store.get_history(
                 session_id, max_tokens=settings.context_max_tokens
             )
             loop = asyncio.get_event_loop()
@@ -80,13 +85,14 @@ async def chat_stream(request: ChatRequest):
             yield f"data: {json.dumps({'done': True})}\n\n"
 
             # 流式完成后记录会话
-            session_store.add_messages(session_id, [
+            await session_store.add_messages(session_id, [
                 HumanMessage(content=request.question),
                 AIMessage(content=answer),
             ], client_id=client_id)
 
         except Exception as e:
-            session_store.add_error_log(
+            logger.opt(exception=True).error(f"chat stream 失败: {e}")
+            await session_store.add_error_log(
                 session_id=session_id,
                 client_id=client_id,
                 question=request.question,

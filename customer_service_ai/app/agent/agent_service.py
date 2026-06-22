@@ -43,6 +43,8 @@ def _create_executor(verbose: bool = False) -> AgentExecutor:
         tools=tools,
         verbose=verbose,
         handle_parsing_errors=True,
+        max_iterations=5,
+        early_stopping_method="force",
     )
 
 

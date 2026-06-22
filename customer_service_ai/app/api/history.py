@@ -25,13 +25,13 @@ class MessageItem(BaseModel):
 @router.get("/", response_model=list[SessionItem])
 async def list_sessions(client_id: str = Query(default="")):
     """获取当前用户的历史会话摘要"""
-    return session_store.list_sessions(client_id=client_id or None)
+    return await session_store.list_sessions(client_id=client_id or None)
 
 
 @router.get("/{session_id}", response_model=list[MessageItem])
 async def get_session_messages(session_id: str):
     """获取指定会话的消息列表"""
-    raw = session_store.get_raw_messages(session_id)
+    raw = await session_store.get_raw_messages(session_id)
     if not raw:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
     result = []
@@ -46,6 +46,6 @@ async def get_session_messages(session_id: str):
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_session(session_id: str, client_id: str = Query(default="")):
     """删除指定会话"""
-    deleted = session_store.delete_session(session_id, client_id=client_id or None)
+    deleted = await session_store.delete_session(session_id, client_id=client_id or None)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
