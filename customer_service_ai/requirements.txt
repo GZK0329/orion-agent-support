@@ -16,6 +16,7 @@ python-multipart==0.0.18
 # 如果用 PostgreSQL，需额外安装：psycopg2-binary==2.9.10
 
 # Config & Utils
+pydantic-settings==2.7.0
 python-dotenv==1.0.1
 pypdf==5.1.0
 tiktoken==0.8.0

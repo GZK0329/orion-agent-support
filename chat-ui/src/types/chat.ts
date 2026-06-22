@@ -3,6 +3,7 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   createdAt: number
+  feedback?: 'like' | 'dislike' | null
 }
 
 export interface ChatRequest {

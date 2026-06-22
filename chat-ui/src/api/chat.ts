@@ -68,6 +68,24 @@ export async function sendMessageStream(
 
 // ---- 历史对话 API ----
 
+// ---- 反馈 API ----
+
+export async function submitFeedback(body: {
+  session_id: string
+  question: string
+  answer: string
+  feedback: 'like' | 'dislike'
+  comment?: string
+}): Promise<void> {
+  await fetch('/feedback/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+// ---- 历史对话 ----
+
 export interface SessionItem {
   session_id: string
   title: string

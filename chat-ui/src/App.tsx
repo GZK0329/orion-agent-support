@@ -3,7 +3,7 @@ import ChatBubble from './components/ChatBubble'
 import ChatInput from './components/ChatInput'
 import DocManager from './components/DocManager'
 import LoginModal from './components/LoginModal'
-import { sendMessageStream, fetchSessions, deleteSession as apiDeleteSession } from './api/chat'
+import { sendMessageStream, fetchSessions, deleteSession as apiDeleteSession, submitFeedback } from './api/chat'
 import { fetchDemos } from './api/demos'
 import type { Message } from './types/chat'
 import type { DemoItem } from './api/demos'
@@ -239,6 +239,33 @@ export default function App() {
     saveAdminToken('')
   }
 
+  const handleFeedback = (msgId: string, feedback: 'like' | 'dislike', comment?: string) => {
+    const msgIndex = messages.findIndex((m) => m.id === msgId)
+    if (msgIndex === -1) return
+    const answer = messages[msgIndex].content
+    if (!answer) return
+
+    // 找到前一条用户消息作为 question
+    let question = ''
+    for (let i = msgIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        question = messages[i].content
+        break
+      }
+    }
+
+    // 乐观更新 UI
+    setMessages((prev) => {
+      const copy = [...prev]
+      copy[msgIndex] = { ...copy[msgIndex], feedback }
+      persist(sessionId, copy)
+      return copy
+    })
+
+    // 提交到后端（静默失败）
+    submitFeedback({ session_id: sessionId, question, answer, feedback, comment }).catch(() => {})
+  }
+
   const isAdmin = !!adminToken
   const hasMessages = messages.length > 0 && messages.some((m) => m.content)
 
@@ -272,7 +299,7 @@ export default function App() {
               <p className="truncate text-sm font-medium text-gray-800">{conv.title}</p>
               <p className="mt-0.5 text-xs text-gray-400">
                 {new Date(conv.createdAt).toLocaleString('zh-CN', {
-                  month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                  month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai',
                 })} · {conv.msgCount} 条
               </p>
               <button
@@ -361,7 +388,7 @@ export default function App() {
             </div>
           )}
           {messages.map((msg, i) => (
-            <ChatBubble key={msg.id || i} message={msg} />
+            <ChatBubble key={msg.id || i} message={msg} onFeedback={handleFeedback} />
           ))}
           {loading && !messages.some((m) => m.role === 'assistant' && m.content) && (
             <div className="animate-fade-in flex gap-3 py-1.5">

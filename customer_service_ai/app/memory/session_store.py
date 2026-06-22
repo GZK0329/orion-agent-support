@@ -2,13 +2,15 @@
 会话记忆存储
 基于 SQLAlchemy 数据库实现，支持并发和安全持久化
 """
+from datetime import timezone
 from typing import List, Optional
 
+import tiktoken
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from sqlalchemy import desc
 
 from app.database import SessionLocal
-from app.models.db_models import DBMessage, DBSession
+from app.models.db_models import DBMessage, DBSession, ErrorLog, MessageFeedback
 
 
 def _now() -> int:
@@ -16,12 +18,21 @@ def _now() -> int:
     return int(time.time() * 1000)
 
 
+def _to_epoch_ms(dt) -> int:
+    """将 SQLite 存储的 UTC 时间（naive datetime）转为 epoch 毫秒"""
+    if dt is None:
+        return 0
+    return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
 class SessionStore:
     """数据库持久化的会话记忆存储"""
 
     # ---- 读取 ----
 
-    def get_history(self, session_id: str) -> List[BaseMessage]:
+    def get_history(
+        self, session_id: str, max_tokens: Optional[int] = None
+    ) -> List[BaseMessage]:
         db = SessionLocal()
         try:
             rows = (
@@ -36,9 +47,28 @@ class SessionStore:
                     result.append(HumanMessage(content=row.content))
                 else:
                     result.append(AIMessage(content=row.content))
+            if max_tokens is not None:
+                result = self._truncate_by_tokens(result, max_tokens)
             return result
         finally:
             db.close()
+
+    @staticmethod
+    def _truncate_by_tokens(
+        messages: List[BaseMessage], max_tokens: int
+    ) -> List[BaseMessage]:
+        """从最旧消息开始截断，直到总 token 数不超过 max_tokens（至少保留最近一条）"""
+        enc = tiktoken.get_encoding("cl100k_base")
+        total = 0
+        # 从最新到最旧累加 token，标记需要保留的消息
+        keep: set[int] = set()
+        for i in range(len(messages) - 1, -1, -1):
+            msg_tokens = len(enc.encode(messages[i].content)) + 4  # 4 tokens overhead
+            if total + msg_tokens > max_tokens and keep:
+                break
+            total += msg_tokens
+            keep.add(i)
+        return [m for i, m in enumerate(messages) if i in keep]
 
     def list_sessions(self, client_id: Optional[str] = None) -> List[dict]:
         db = SessionLocal()
@@ -58,7 +88,7 @@ class SessionStore:
                     "session_id": s.session_id,
                     "title": s.title or "新对话",
                     "message_count": count,
-                    "created_at": int(s.created_at.timestamp() * 1000) if s.created_at else 0,
+                    "created_at": _to_epoch_ms(s.created_at),
                 })
             return result
         finally:
@@ -138,6 +168,103 @@ class SessionStore:
 
     def clear(self, session_id: str) -> None:
         self.delete_session(session_id)
+
+    # ---- 反馈 ----
+
+    def add_feedback(
+        self,
+        session_id: str,
+        question: str,
+        answer: str,
+        feedback: str,
+        comment: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> int:
+        db = SessionLocal()
+        try:
+            record = MessageFeedback(
+                session_id=session_id,
+                question=question,
+                answer=answer,
+                feedback=feedback,
+                comment=comment,
+                source=source,
+            )
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+            return record.id
+        finally:
+            db.close()
+
+    def list_feedback(self, session_id: Optional[str] = None) -> list[dict]:
+        db = SessionLocal()
+        try:
+            q = db.query(MessageFeedback).order_by(desc(MessageFeedback.created_at))
+            if session_id:
+                q = q.filter(MessageFeedback.session_id == session_id)
+            return [
+                {
+                    "id": r.id,
+                    "session_id": r.session_id,
+                    "question": r.question,
+                    "answer": r.answer,
+                    "feedback": r.feedback,
+                    "comment": r.comment,
+                    "source": r.source,
+                    "created_at": _to_epoch_ms(r.created_at),
+                }
+                for r in q.all()
+            ]
+        finally:
+            db.close()
+
+    # ---- 错误日志 ----
+
+    def add_error_log(
+        self,
+        session_id: str,
+        client_id: str,
+        question: str,
+        error_message: str,
+        source: Optional[str] = None,
+    ) -> int:
+        db = SessionLocal()
+        try:
+            record = ErrorLog(
+                session_id=session_id,
+                client_id=client_id,
+                question=question,
+                error_message=error_message,
+                source=source,
+            )
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+            return record.id
+        finally:
+            db.close()
+
+    def list_error_logs(self, session_id: Optional[str] = None) -> list[dict]:
+        db = SessionLocal()
+        try:
+            q = db.query(ErrorLog).order_by(desc(ErrorLog.created_at))
+            if session_id:
+                q = q.filter(ErrorLog.session_id == session_id)
+            return [
+                {
+                    "id": r.id,
+                    "session_id": r.session_id,
+                    "client_id": r.client_id,
+                    "question": r.question,
+                    "error_message": r.error_message,
+                    "source": r.source,
+                    "created_at": _to_epoch_ms(r.created_at),
+                }
+                for r in q.all()
+            ]
+        finally:
+            db.close()
 
 
 session_store = SessionStore()
