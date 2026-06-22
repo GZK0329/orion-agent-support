@@ -19,7 +19,7 @@ def _require_admin(x_admin_token: str) -> None:
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def submit_feedback(req: FeedbackCreate):
     """提交用户反馈（无需登录）"""
-    feedback_id = session_store.add_feedback(
+    feedback_id = await session_store.add_feedback(
         session_id=req.session_id,
         question=req.question,
         answer=req.answer,
@@ -37,4 +37,4 @@ async def list_feedback(
 ):
     """获取反馈列表（仅管理员）"""
     _require_admin(x_admin_token)
-    return session_store.list_feedback(session_id=session_id or None)
+    return await session_store.list_feedback(session_id=session_id or None)

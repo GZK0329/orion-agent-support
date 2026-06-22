@@ -22,4 +22,4 @@ async def list_errors(
 ):
     """获取错误日志列表（仅管理员）"""
     _require_admin(x_admin_token)
-    return session_store.list_error_logs(session_id=session_id or None)
+    return await session_store.list_error_logs(session_id=session_id or None)

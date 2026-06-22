@@ -1,21 +1,17 @@
 """
 会话记忆存储
-基于 SQLAlchemy 数据库实现，支持并发和安全持久化
+基于 SQLAlchemy 异步实现，避免阻塞 FastAPI 事件循环
 """
 from datetime import timezone
 from typing import List, Optional
 
 import tiktoken
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from sqlalchemy import desc
+from loguru import logger
+from sqlalchemy import desc, func, select
 
-from app.database import SessionLocal
+from app.database import AsyncSessionLocal
 from app.models.db_models import DBMessage, DBSession, ErrorLog, MessageFeedback
-
-
-def _now() -> int:
-    import time
-    return int(time.time() * 1000)
 
 
 def _to_epoch_ms(dt) -> int:
@@ -26,32 +22,29 @@ def _to_epoch_ms(dt) -> int:
 
 
 class SessionStore:
-    """数据库持久化的会话记忆存储"""
+    """数据库持久化的会话记忆存储（异步版本）"""
 
     # ---- 读取 ----
 
-    def get_history(
+    async def get_history(
         self, session_id: str, max_tokens: Optional[int] = None
     ) -> List[BaseMessage]:
-        db = SessionLocal()
-        try:
-            rows = (
-                db.query(DBMessage)
-                .filter(DBMessage.session_id == session_id)
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DBMessage)
+                .where(DBMessage.session_id == session_id)
                 .order_by(DBMessage.id)
-                .all()
             )
-            result: List[BaseMessage] = []
+            rows = result.scalars().all()
+            messages: List[BaseMessage] = []
             for row in rows:
                 if row.role == "human":
-                    result.append(HumanMessage(content=row.content))
+                    messages.append(HumanMessage(content=row.content))
                 else:
-                    result.append(AIMessage(content=row.content))
+                    messages.append(AIMessage(content=row.content))
             if max_tokens is not None:
-                result = self._truncate_by_tokens(result, max_tokens)
-            return result
-        finally:
-            db.close()
+                messages = self._truncate_by_tokens(messages, max_tokens)
+            return messages
 
     @staticmethod
     def _truncate_by_tokens(
@@ -60,76 +53,74 @@ class SessionStore:
         """从最旧消息开始截断，直到总 token 数不超过 max_tokens（至少保留最近一条）"""
         enc = tiktoken.get_encoding("cl100k_base")
         total = 0
-        # 从最新到最旧累加 token，标记需要保留的消息
         keep: set[int] = set()
         for i in range(len(messages) - 1, -1, -1):
-            msg_tokens = len(enc.encode(messages[i].content)) + 4  # 4 tokens overhead
+            msg_tokens = len(enc.encode(messages[i].content)) + 4
             if total + msg_tokens > max_tokens and keep:
                 break
             total += msg_tokens
             keep.add(i)
         return [m for i, m in enumerate(messages) if i in keep]
 
-    def list_sessions(self, client_id: Optional[str] = None) -> List[dict]:
-        db = SessionLocal()
-        try:
-            q = db.query(DBSession)
+    async def list_sessions(self, client_id: Optional[str] = None) -> List[dict]:
+        async with AsyncSessionLocal() as db:
+            stmt = select(DBSession)
             if client_id:
-                q = q.filter(DBSession.client_id == client_id)
-            rows = q.order_by(desc(DBSession.created_at)).all()
-            result = []
-            for s in rows:
-                count = (
-                    db.query(DBMessage)
-                    .filter(DBMessage.session_id == s.session_id)
-                    .count()
+                stmt = stmt.where(DBSession.client_id == client_id)
+            stmt = stmt.order_by(desc(DBSession.created_at))
+            result = await db.execute(stmt)
+            sessions = result.scalars().all()
+
+            items = []
+            for s in sessions:
+                count_result = await db.execute(
+                    select(func.count()).where(DBMessage.session_id == s.session_id)
                 )
-                result.append({
+                count = count_result.scalar() or 0
+                items.append({
                     "session_id": s.session_id,
                     "title": s.title or "新对话",
                     "message_count": count,
                     "created_at": _to_epoch_ms(s.created_at),
                 })
-            return result
-        finally:
-            db.close()
+            return items
 
-    def get_raw_messages(self, session_id: str) -> list:
-        """获取消息列表（dict 格式），供历史 API 返回"""
-        db = SessionLocal()
-        try:
-            rows = (
-                db.query(DBMessage)
-                .filter(DBMessage.session_id == session_id)
+    async def get_raw_messages(self, session_id: str) -> list:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DBMessage)
+                .where(DBMessage.session_id == session_id)
                 .order_by(DBMessage.id)
-                .all()
             )
+            rows = result.scalars().all()
             return [
                 {"type": "human" if r.role == "human" else "ai", "content": r.content}
                 for r in rows
             ]
-        finally:
-            db.close()
 
     # ---- 写入 ----
 
-    def _ensure_session(self, db, session_id: str, client_id: str = "anonymous") -> None:
-        """确保会话记录存在"""
-        exists = db.query(DBSession).filter(DBSession.session_id == session_id).first()
-        if not exists:
+    async def _ensure_session(self, db, session_id: str, client_id: str = "anonymous") -> None:
+        result = await db.execute(
+            select(DBSession).where(DBSession.session_id == session_id)
+        )
+        if not result.scalar_one_or_none():
             db.add(DBSession(session_id=session_id, client_id=client_id))
-            db.flush()
+            await db.flush()
 
-    def add_messages(self, session_id: str, messages: List[BaseMessage], client_id: str = "anonymous") -> None:
-        db = SessionLocal()
-        try:
-            self._ensure_session(db, session_id, client_id)
+    async def add_messages(
+        self, session_id: str, messages: List[BaseMessage], client_id: str = "anonymous"
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await self._ensure_session(db, session_id, client_id)
             for msg in messages:
                 role = "human" if isinstance(msg, HumanMessage) else "ai"
                 db.add(DBMessage(session_id=session_id, role=role, content=msg.content))
 
-            # 更新会话标题（用第一条用户消息）
-            session = db.query(DBSession).filter(DBSession.session_id == session_id).first()
+            result = await db.execute(
+                select(DBSession).where(DBSession.session_id == session_id)
+            )
+            session = result.scalar_one_or_none()
             if session and (not session.title or session.title == "新对话"):
                 for msg in messages:
                     if isinstance(msg, HumanMessage) and msg.content.strip():
@@ -137,41 +128,38 @@ class SessionStore:
                         session.title = title[:30] + "…" if len(title) > 30 else title
                         break
 
-            db.commit()
-        finally:
-            db.close()
+            await db.commit()
+            logger.debug(f"会话 {session_id[:8]} 已保存 {len(messages)} 条消息")
 
-    def update_title(self, session_id: str, title: str) -> None:
-        db = SessionLocal()
-        try:
-            db.query(DBSession).filter(DBSession.session_id == session_id).update(
-                {"title": title[:100]}
+    async def update_title(self, session_id: str, title: str) -> None:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DBSession).where(DBSession.session_id == session_id)
             )
-            db.commit()
-        finally:
-            db.close()
+            session = result.scalar_one_or_none()
+            if session:
+                session.title = title[:100]
+                await db.commit()
 
-    def delete_session(self, session_id: str, client_id: Optional[str] = None) -> bool:
-        db = SessionLocal()
-        try:
-            q = db.query(DBSession).filter(DBSession.session_id == session_id)
+    async def delete_session(self, session_id: str, client_id: Optional[str] = None) -> bool:
+        async with AsyncSessionLocal() as db:
+            stmt = select(DBSession).where(DBSession.session_id == session_id)
             if client_id:
-                q = q.filter(DBSession.client_id == client_id)
-            session = q.first()
+                stmt = stmt.where(DBSession.client_id == client_id)
+            result = await db.execute(stmt)
+            session = result.scalar_one_or_none()
             if not session:
                 return False
-            db.delete(session)
-            db.commit()
+            await db.delete(session)
+            await db.commit()
             return True
-        finally:
-            db.close()
 
-    def clear(self, session_id: str) -> None:
-        self.delete_session(session_id)
+    async def clear(self, session_id: str) -> None:
+        await self.delete_session(session_id)
 
     # ---- 反馈 ----
 
-    def add_feedback(
+    async def add_feedback(
         self,
         session_id: str,
         question: str,
@@ -180,8 +168,7 @@ class SessionStore:
         comment: Optional[str] = None,
         source: Optional[str] = None,
     ) -> int:
-        db = SessionLocal()
-        try:
+        async with AsyncSessionLocal() as db:
             record = MessageFeedback(
                 session_id=session_id,
                 question=question,
@@ -191,18 +178,16 @@ class SessionStore:
                 source=source,
             )
             db.add(record)
-            db.commit()
-            db.refresh(record)
+            await db.commit()
+            await db.refresh(record)
             return record.id
-        finally:
-            db.close()
 
-    def list_feedback(self, session_id: Optional[str] = None) -> list[dict]:
-        db = SessionLocal()
-        try:
-            q = db.query(MessageFeedback).order_by(desc(MessageFeedback.created_at))
+    async def list_feedback(self, session_id: Optional[str] = None) -> list[dict]:
+        async with AsyncSessionLocal() as db:
+            stmt = select(MessageFeedback).order_by(desc(MessageFeedback.created_at))
             if session_id:
-                q = q.filter(MessageFeedback.session_id == session_id)
+                stmt = stmt.where(MessageFeedback.session_id == session_id)
+            result = await db.execute(stmt)
             return [
                 {
                     "id": r.id,
@@ -214,14 +199,12 @@ class SessionStore:
                     "source": r.source,
                     "created_at": _to_epoch_ms(r.created_at),
                 }
-                for r in q.all()
+                for r in result.scalars().all()
             ]
-        finally:
-            db.close()
 
     # ---- 错误日志 ----
 
-    def add_error_log(
+    async def add_error_log(
         self,
         session_id: str,
         client_id: str,
@@ -229,8 +212,7 @@ class SessionStore:
         error_message: str,
         source: Optional[str] = None,
     ) -> int:
-        db = SessionLocal()
-        try:
+        async with AsyncSessionLocal() as db:
             record = ErrorLog(
                 session_id=session_id,
                 client_id=client_id,
@@ -239,18 +221,16 @@ class SessionStore:
                 source=source,
             )
             db.add(record)
-            db.commit()
-            db.refresh(record)
+            await db.commit()
+            await db.refresh(record)
             return record.id
-        finally:
-            db.close()
 
-    def list_error_logs(self, session_id: Optional[str] = None) -> list[dict]:
-        db = SessionLocal()
-        try:
-            q = db.query(ErrorLog).order_by(desc(ErrorLog.created_at))
+    async def list_error_logs(self, session_id: Optional[str] = None) -> list[dict]:
+        async with AsyncSessionLocal() as db:
+            stmt = select(ErrorLog).order_by(desc(ErrorLog.created_at))
             if session_id:
-                q = q.filter(ErrorLog.session_id == session_id)
+                stmt = stmt.where(ErrorLog.session_id == session_id)
+            result = await db.execute(stmt)
             return [
                 {
                     "id": r.id,
@@ -261,10 +241,8 @@ class SessionStore:
                     "source": r.source,
                     "created_at": _to_epoch_ms(r.created_at),
                 }
-                for r in q.all()
+                for r in result.scalars().all()
             ]
-        finally:
-            db.close()
 
 
 session_store = SessionStore()
