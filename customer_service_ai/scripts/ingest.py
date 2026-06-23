@@ -20,7 +20,6 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     DirectoryLoader,
     PyPDFLoader,
@@ -94,13 +93,8 @@ def load_documents(docs_dir: Path) -> list[Document]:
 
 def split_documents(documents: list[Document]) -> list[Document]:
     """将文档切分为固定大小的文本块，并在 metadata 中标记来源"""
-    # BAAI/bge-m3 最大输入 8192 tokens，API 文档表格丰富设为 1500
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=200,
-        separators=["\n\n", "\n", "。", "；", " ", ""],
-    )
-    return text_splitter.split_documents(documents)
+    from app.services.rag_service import get_text_splitter
+    return get_text_splitter().split_documents(documents)
 
 
 def build_label_chunks(docs_dir: Path) -> list[Document]:

@@ -8,6 +8,14 @@ __pycache__
 .idea
 .vscode
 .DS_Store
+.env
+.env.local
+.env.*.local
 data/vector_db/*
 data/chat.db
+data/test_chat.db
+data/logs/
+tests/
+.pytest_cache
+*.egg-info
 README.md

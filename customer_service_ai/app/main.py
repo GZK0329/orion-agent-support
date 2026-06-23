@@ -12,6 +12,7 @@ from loguru import logger
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
+from app.api.config import router as config_router
 from app.api.demos import router as demos_router
 from app.api.history import router as history_router
 from app.api.documents import router as documents_router
@@ -104,6 +105,7 @@ app.include_router(history_router)
 app.include_router(documents_router)
 app.include_router(feedback_router)
 app.include_router(error_logs_router)
+app.include_router(config_router)
 
 
 @app.get("/", summary="健康检查")

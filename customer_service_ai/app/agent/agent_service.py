@@ -2,11 +2,12 @@
 Agent 编排服务
 组装 Tool、LLM、Prompt 为可调用的 Agent
 """
-from typing import List, Optional
+from typing import AsyncGenerator, List, Optional
 
 from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
+from loguru import logger
 
 from app.prompts.agent_system import AGENT_SYSTEM_PROMPT
 from app.services.llm_service import get_llm
@@ -63,3 +64,70 @@ def chat(
         "chat_history": chat_history or [],
     })
     return result.get("output", "")
+
+
+async def chat_stream(
+    question: str,
+    chat_history: Optional[List[BaseMessage]] = None,
+    verbose: bool = False,
+) -> AsyncGenerator[str, None]:
+    """
+    流式执行 Agent 对话，逐 token 产出最终回答文本。
+    过滤中间推理（如"好的，我来查询"）和工具内部 LLM 调用，
+    只输出最后一轮不含 tool_call 的 LLM 回答。
+    """
+    executor = _create_executor(verbose=verbose)
+    yielded_any = False
+
+    tool_active = False
+    llm_buffer: list[str] = []
+    llm_has_tool_call = False
+
+    async for event in executor.astream_events(
+        {"input": question, "chat_history": chat_history or []},
+        version="v2",
+    ):
+        kind = event["event"]
+
+        if kind == "on_tool_start":
+            tool_active = True
+            llm_has_tool_call = True
+            llm_buffer = []
+
+        elif kind == "on_tool_end":
+            tool_active = False
+
+        elif kind == "on_chat_model_start":
+            if not tool_active:
+                llm_buffer = []
+                llm_has_tool_call = False
+
+        elif kind == "on_chat_model_stream":
+            if tool_active:
+                continue
+
+            chunk = event["data"].get("chunk")
+            if not chunk:
+                continue
+
+            if getattr(chunk, "tool_call_chunks", None):
+                llm_has_tool_call = True
+
+            text = getattr(chunk, "content", None)
+            if text:
+                llm_buffer.append(text)
+
+        elif kind == "on_chat_model_end":
+            if not tool_active and not llm_has_tool_call and llm_buffer:
+                for text in llm_buffer:
+                    yielded_any = True
+                    yield text
+                llm_buffer = []
+
+        elif kind == "on_chain_end" and event.get("name") == "agent":
+            if not yielded_any:
+                output = event.get("data", {}).get("output", {})
+                if isinstance(output, dict) and output.get("output"):
+                    yield output["output"]
+
+    logger.debug(f"Agent 流式完成")

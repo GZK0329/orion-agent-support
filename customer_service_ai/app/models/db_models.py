@@ -16,6 +16,7 @@ class DBSession(Base):
     session_id = Column(String(36), unique=True, nullable=False, index=True)
     client_id = Column(String(36), nullable=False, index=True, server_default="anonymous")
     title = Column(String(100), default="新对话")
+    summary = Column(Text, default="")  # 对话摘要，供回头客恢复上下文
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -61,3 +62,12 @@ class ErrorLog(Base):
     error_message = Column(Text, nullable=False)
     source = Column(String(20), nullable=True)  # 'chat_stream' | 'chat_sync'
     created_at = Column(DateTime, server_default=func.now())
+
+
+class AgentConfig(Base):
+    """Agent 配置表 — 支持 prompt/阈值等配置的数据库存储与热重载"""
+    __tablename__ = "agent_config"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

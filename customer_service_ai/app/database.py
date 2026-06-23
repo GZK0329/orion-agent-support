@@ -45,9 +45,17 @@ def init_db() -> None:
     from sqlalchemy import inspect as sa_inspect
     inspector = sa_inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("sessions")}
+
     if "client_id" not in cols:
         with engine.connect() as conn:
             conn.exec_driver_sql(
                 "ALTER TABLE sessions ADD COLUMN client_id VARCHAR(36) NOT NULL DEFAULT 'anonymous'"
+            )
+            conn.commit()
+
+    if "summary" not in cols:
+        with engine.connect() as conn:
+            conn.exec_driver_sql(
+                "ALTER TABLE sessions ADD COLUMN summary TEXT DEFAULT ''"
             )
             conn.commit()

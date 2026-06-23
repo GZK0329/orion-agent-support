@@ -8,12 +8,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Header, HTTPException, UploadFile, status
 from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader
 from pydantic import BaseModel
 
 from app.api.auth import validate_admin_token
-from app.services.rag_service import add_documents, build_vector_store, delete_by_source
+from app.services.rag_service import add_documents, build_vector_store, delete_by_source, get_text_splitter
 
 router = APIRouter(prefix="/documents", tags=["文档管理"])
 DOCS_DIR = Path(__file__).parent.parent / "data" / "docs"
@@ -32,6 +31,14 @@ def _require_admin(x_admin_token: str = Header(default="")) -> None:
         raise HTTPException(status_code=403, detail="需要管理员权限")
 
 
+def _safe_path(filename: str) -> Path:
+    """构造安全路径，防止路径穿越（如 ../../etc/passwd）"""
+    target = (DOCS_DIR / filename).resolve()
+    if not target.is_relative_to(DOCS_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="非法文件名")
+    return target
+
+
 def _list_files() -> list[FileItem]:
     if not DOCS_DIR.exists():
         return []
@@ -48,11 +55,7 @@ def _list_files() -> list[FileItem]:
 
 
 def _split_text(texts: list[Document]) -> list[Document]:
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500, chunk_overlap=200,
-        separators=["\n\n", "\n", "。", "；", " ", ""],
-    )
-    return splitter.split_documents(texts)
+    return get_text_splitter().split_documents(texts)
 
 
 @router.get("/")
@@ -70,12 +73,13 @@ async def upload_document(
     """上传文档并自动导入向量库（仅管理员）"""
     _require_admin(x_admin_token)
 
-    ext = Path(file.filename or "").suffix.lower()
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXT:
         raise HTTPException(status_code=400, detail=f"不支持的格式: {ext}，支持 {ALLOWED_EXT}")
 
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
-    save_path = DOCS_DIR / file.filename  # type: ignore
+    save_path = _safe_path(filename)
 
     with open(save_path, "wb") as buf:
         shutil.copyfileobj(file.file, buf)
@@ -87,11 +91,11 @@ async def upload_document(
             docs = TextLoader(str(save_path), encoding="utf-8").load()
 
         for d in docs:
-            d.metadata["source"] = file.filename
+            d.metadata["source"] = filename
         chunks = _split_text(docs)
         add_documents(chunks)
 
-        return {"message": f"导入成功，共 {len(chunks)} 个文本块", "filename": file.filename}
+        return {"message": f"导入成功，共 {len(chunks)} 个文本块", "filename": filename}
     except Exception as e:
         save_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
@@ -114,7 +118,7 @@ async def reindex_documents(x_admin_token: str = Header(default="")):
     for chunk in chunks:
         src = chunk.metadata.get("source", "")
         if src:
-            chunk.metadata["source"] = str(Path(src).resolve().relative_to(DOCS_DIR))
+            chunk.metadata["source"] = str(Path(src).resolve().relative_to(DOCS_DIR.resolve()))
 
     build_vector_store(chunks)
     return {"message": f"向量库重建完成，共 {len(chunks)} 个文本块", "total_chunks": len(chunks)}
@@ -128,4 +132,5 @@ async def delete_document(
     """删除文档并从向量库移除（仅管理员）"""
     _require_admin(x_admin_token)
     delete_by_source(filename)
-    (DOCS_DIR / filename).unlink(missing_ok=True)
+    target = _safe_path(filename)
+    target.unlink(missing_ok=True)

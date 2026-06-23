@@ -1,21 +1,60 @@
 """
 对话 API
 提供 /chat（同步） 和 /chat/stream（流式） 接口
+支持会话摘要记忆：对话结束时异步生成摘要，回头客自动恢复上下文
 """
 import asyncio
 import json
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from loguru import logger
 
 from app.agent.agent_service import chat as agent_chat
+from app.agent.agent_service import chat_stream as agent_chat_stream
 from app.config import settings
 from app.memory.session_store import session_store
 from app.models.schemas import ChatRequest, ChatResponse
+from app.services.llm_service import get_llm
 
 router = APIRouter(prefix="/chat", tags=["智能客服对话"])
+
+SUMMARY_PROMPT = "请用一句话概括以下对话的核心主题和关键结论（30字以内，不要编造）：\n\n{dialog}"
+
+
+async def _generate_summary(session_id: str) -> None:
+    """异步生成对话摘要并存入 DB"""
+    try:
+        history = await session_store.get_history(session_id, max_tokens=4000)
+        if len(history) < 2:
+            return
+
+        dialog = "\n".join(
+            f"{'用户' if isinstance(m, HumanMessage) else 'AI'}: {m.content[:200]}"
+            for m in history[-6:]
+        )
+
+        llm = get_llm()
+        result = await llm.ainvoke(SUMMARY_PROMPT.format(dialog=dialog))
+        summary = result.content.strip() if hasattr(result, "content") else str(result).strip()
+
+        if summary:
+            await session_store.update_summary(session_id, summary)
+            logger.debug(f"会话 {session_id[:8]} 摘要已更新: {summary[:40]}")
+    except Exception as e:
+        logger.warning(f"生成摘要失败（不影响主流程）: {e}")
+
+
+async def _get_history_with_summary(session_id: str) -> list:
+    """获取历史消息，如果有摘要则注入到最前面"""
+    history = await session_store.get_history(
+        session_id, max_tokens=settings.context_max_tokens
+    )
+    summary = await session_store.get_summary(session_id)
+    if summary and history:
+        history.insert(0, SystemMessage(content=f"之前的对话摘要：{summary}"))
+    return history
 
 
 @router.post(
@@ -28,10 +67,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
     session_id = request.session_id
     client_id = request.client_id
     try:
-        history = await session_store.get_history(
-            session_id, max_tokens=settings.context_max_tokens
-        )
-        loop = asyncio.get_event_loop()
+        history = await _get_history_with_summary(session_id)
+        loop = asyncio.get_running_loop()
         answer = await loop.run_in_executor(
             None, agent_chat, request.question, history,
         )
@@ -39,6 +76,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             HumanMessage(content=request.question),
             AIMessage(content=answer),
         ], client_id=client_id)
+        asyncio.create_task(_generate_summary(session_id))
     except Exception as e:
         logger.opt(exception=True).error(f"chat 同步失败: {e}")
         await session_store.add_error_log(
@@ -61,34 +99,27 @@ async def chat(request: ChatRequest) -> ChatResponse:
     description="SSE 流式返回回答，适用于前端渐进显示",
 )
 async def chat_stream(request: ChatRequest):
-    """流式问答接口"""
+    """流式问答接口 — 真正的 LLM token-by-token 流式"""
     session_id = request.session_id
     client_id = request.client_id
 
     async def event_stream():
+        full_answer: list[str] = []
         try:
-            history = await session_store.get_history(
-                session_id, max_tokens=settings.context_max_tokens
-            )
-            loop = asyncio.get_event_loop()
+            history = await _get_history_with_summary(session_id)
 
-            # 在独立线程中运行 agent（避免阻塞事件循环）
-            answer = await loop.run_in_executor(
-                None, agent_chat, request.question, history,
-            )
-
-            # 逐字输出
-            for char in answer:
-                yield f"data: {json.dumps({'token': char})}\n\n"
-                await asyncio.sleep(0.008)
+            async for token in agent_chat_stream(request.question, history):
+                full_answer.append(token)
+                yield f"data: {json.dumps({'token': token})}\n\n"
 
             yield f"data: {json.dumps({'done': True})}\n\n"
 
-            # 流式完成后记录会话
+            answer = "".join(full_answer)
             await session_store.add_messages(session_id, [
                 HumanMessage(content=request.question),
                 AIMessage(content=answer),
             ], client_id=client_id)
+            asyncio.create_task(_generate_summary(session_id))
 
         except Exception as e:
             logger.opt(exception=True).error(f"chat stream 失败: {e}")

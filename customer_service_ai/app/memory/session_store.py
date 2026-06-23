@@ -64,26 +64,31 @@ class SessionStore:
 
     async def list_sessions(self, client_id: Optional[str] = None) -> List[dict]:
         async with AsyncSessionLocal() as db:
-            stmt = select(DBSession)
+            stmt = (
+                select(
+                    DBSession.session_id,
+                    DBSession.title,
+                    DBSession.created_at,
+                    func.count(DBMessage.id).label("msg_count"),
+                )
+                .outerjoin(DBMessage, DBMessage.session_id == DBSession.session_id)
+                .group_by(DBSession.session_id)
+                .order_by(desc(DBSession.created_at))
+            )
             if client_id:
                 stmt = stmt.where(DBSession.client_id == client_id)
-            stmt = stmt.order_by(desc(DBSession.created_at))
-            result = await db.execute(stmt)
-            sessions = result.scalars().all()
 
-            items = []
-            for s in sessions:
-                count_result = await db.execute(
-                    select(func.count()).where(DBMessage.session_id == s.session_id)
-                )
-                count = count_result.scalar() or 0
-                items.append({
-                    "session_id": s.session_id,
-                    "title": s.title or "新对话",
-                    "message_count": count,
-                    "created_at": _to_epoch_ms(s.created_at),
-                })
-            return items
+            result = await db.execute(stmt)
+            rows = result.all()
+            return [
+                {
+                    "session_id": r.session_id,
+                    "title": r.title or "新对话",
+                    "message_count": r.msg_count or 0,
+                    "created_at": _to_epoch_ms(r.created_at),
+                }
+                for r in rows
+            ]
 
     async def get_raw_messages(self, session_id: str) -> list:
         async with AsyncSessionLocal() as db:
@@ -156,6 +161,26 @@ class SessionStore:
 
     async def clear(self, session_id: str) -> None:
         await self.delete_session(session_id)
+
+    async def get_summary(self, session_id: str) -> str:
+        """获取会话摘要（供回头客恢复上下文）"""
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DBSession).where(DBSession.session_id == session_id)
+            )
+            session = result.scalar_one_or_none()
+            return session.summary if session and session.summary else ""
+
+    async def update_summary(self, session_id: str, summary: str) -> None:
+        """更新会话摘要"""
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DBSession).where(DBSession.session_id == session_id)
+            )
+            session = result.scalar_one_or_none()
+            if session:
+                session.summary = summary[:500]
+                await db.commit()
 
     # ---- 反馈 ----
 

@@ -36,14 +36,24 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 8
     retrieval_fetch_k: int = 30  # MMR 候选池大小
     retrieval_lambda_mult: float = 0.5  # MMR 多样性系数
+    retrieval_rerank_top_k: int = 5  # 经过 Reranker 精排后保留的文档数
+    retrieval_rerank_candidate_k: int = 20  # 送入 Reranker 的候选文档数
+
+    # Reranker 配置（使用与 Embedding 相同的 API 提供商）
+    reranker_api_key: str = ""  # 默认复用 embedding_api_key
+    reranker_base_url: str = ""  # 默认复用 embedding_base_url
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+
+    # 缓存配置
+    cache_enabled: bool = True
+    cache_ttl: int = 3600  # 缓存秒数
+    cache_max_entries: int = 200
+
+    # 置信度配置
+    confidence_threshold: float = 0.5  # 低于此值标注"仅供参考"
 
     # 对话上下文配置
-    context_max_tokens: int = 8000  # 聊天历史最大 token 数，超出后截断最旧消息（0=纯多样，1=纯相关）
-
-    # 业务 API 配置（为空时 Tool 使用 mock 数据）
-    order_api_url: str = ""
-    logistics_api_url: str = ""
-    return_api_url: str = ""
+    context_max_tokens: int = 8000  # 聊天历史最大 token 数，超出后截断最旧消息
 
     # 数据库配置（默认 SQLite 零配置，部署可换 PostgreSQL）
     database_url: str = "sqlite:///./data/chat.db"
