@@ -1,7 +1,7 @@
 """
 Reranker 精排服务
 使用 SiliconFlow / Jina 等 OpenAI 兼容提供商的 /rerank 接口
-对 MMR 粗排结果做二次精排，提升 Top-K 准确率
+对 MMR 粗排结果做二次精排，集成断路器保护
 返回精排后的文档列表和 top relevance_score（供置信度评估使用）
 """
 from typing import List, Tuple
@@ -11,6 +11,7 @@ from langchain.schema import Document
 from loguru import logger
 
 from app.config import settings
+from app.utils.circuit_breaker import reranker_breaker
 from app.utils.retry import with_retry
 
 
@@ -64,7 +65,11 @@ class RerankerService:
 
         try:
             texts = [d.page_content for d in docs]
-            scores = self._call_rerank_api(query, texts)
+
+            def _do_rerank():
+                return self._call_rerank_api(query, texts)
+
+            scores = reranker_breaker.call(_do_rerank)
             scored = list(zip(docs, scores))
             scored.sort(key=lambda x: x[1], reverse=True)
             top_score = scored[0][1] if scored else 0.0

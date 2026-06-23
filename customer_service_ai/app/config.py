@@ -39,6 +39,17 @@ class Settings(BaseSettings):
     retrieval_rerank_top_k: int = 5  # 经过 Reranker 精排后保留的文档数
     retrieval_rerank_candidate_k: int = 20  # 送入 Reranker 的候选文档数
 
+    # Hybrid Search 配置（BM25 + 向量检索融合）
+    hybrid_search_enabled: bool = True  # 启用混合搜索
+    hybrid_search_alpha: float = 0.3  # BM25 权重（1-alpha 为向量权重），设为 0 则纯向量，1 则纯 BM25
+    hybrid_search_fetch_k: int = 40  # 每种搜索方式拉取的候选数
+    hybrid_search_rrf_k: int = 60  # RRF 融合常数
+
+    # Embedding 回退配置
+    embedding_fallback_api_key: str = ""  # 回退 Embedding API 密钥，为空则跳过回退
+    embedding_fallback_base_url: str = "https://api.openai.com/v1"
+    embedding_fallback_model: str = "text-embedding-3-small"
+
     # Reranker 配置（使用与 Embedding 相同的 API 提供商）
     reranker_api_key: str = ""  # 默认复用 embedding_api_key
     reranker_base_url: str = ""  # 默认复用 embedding_base_url
@@ -57,6 +68,20 @@ class Settings(BaseSettings):
 
     # 数据库配置（默认 SQLite 零配置，部署可换 PostgreSQL）
     database_url: str = "sqlite:///./data/chat.db"
+
+    # Redis 配置（任务队列 + 限流存储）
+    redis_url: str = "redis://localhost:6379/0"
+
+    # 限流配置
+    rate_limit_chat: str = "30/minute"  # /chat 接口
+    rate_limit_chat_stream: str = "10/minute"  # /chat/stream 接口
+    rate_limit_documents: str = "5/minute"  # /documents 接口
+    rate_limit_config: str = "10/minute"  # /config 接口
+
+    # JWT 配置
+    jwt_secret: str = ""  # 空则自动生成
+    jwt_access_expire_minutes: int = 30
+    jwt_refresh_expire_days: int = 7
 
     # 管理员密码（为空则不开启管理员功能）
     admin_password: str = ""

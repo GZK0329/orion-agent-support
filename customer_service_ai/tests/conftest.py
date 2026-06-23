@@ -44,4 +44,5 @@ async def client():
 @pytest_asyncio.fixture
 async def admin_headers(client: AsyncClient):
     resp = await client.post("/auth/login", json={"password": "test"})
-    return {"X-Admin-Token": resp.json()["token"]}
+    data = resp.json()
+    return {"X-Admin-Token": data["access_token"]}

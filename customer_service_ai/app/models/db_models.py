@@ -71,3 +71,29 @@ class AgentConfig(Base):
     key = Column(String(100), primary_key=True)
     value = Column(Text, nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class KbVersion(Base):
+    """知识库版本表 — 每次全量重建记录一个版本"""
+    __tablename__ = "kb_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    description = Column(String(200), default="")
+    file_count = Column(Integer, default=0)
+    chunk_count = Column(Integer, default=0)
+    file_manifest = Column(Text, default="{}")  # JSON: {filename: md5}
+    is_active = Column(Integer, default=1)  # 1 为当前活跃版本
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AuditLog(Base):
+    """管理员操作审计日志"""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    admin_id = Column(String(36), nullable=False, default="admin")
+    action = Column(String(100), nullable=False)  # document.upload, config.update
+    resource = Column(String(200), nullable=True)
+    detail = Column(Text, nullable=True)
+    ip = Column(String(45), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

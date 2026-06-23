@@ -39,7 +39,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 def init_db() -> None:
     """启动时初始化表结构 + 兼容迁移"""
-    from app.models.db_models import Base
+    from app.models.db_models import AgentConfig, AuditLog, Base
     Base.metadata.create_all(bind=engine)
 
     from sqlalchemy import inspect as sa_inspect
@@ -59,3 +59,17 @@ def init_db() -> None:
                 "ALTER TABLE sessions ADD COLUMN summary TEXT DEFAULT ''"
             )
             conn.commit()
+
+    tabs = set(inspector.get_table_names())
+    if "audit_logs" not in tabs:
+        AuditLog.__table__.create(engine)
+        logger.info("已创建 audit_logs 表")
+
+    if "agent_config" not in tabs:
+        AgentConfig.__table__.create(engine)
+        logger.info("已创建 agent_config 表")
+
+    if "kb_versions" not in tabs:
+        from app.models.db_models import KbVersion
+        KbVersion.__table__.create(engine)
+        logger.info("已创建 kb_versions 表")

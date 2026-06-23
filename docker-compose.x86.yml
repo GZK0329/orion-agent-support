@@ -1,0 +1,9 @@
+services:
+  backend:
+    platform: linux/amd64
+
+  worker:
+    platform: linux/amd64
+
+  frontend:
+    platform: linux/amd64

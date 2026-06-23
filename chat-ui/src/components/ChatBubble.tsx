@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Bot } from 'lucide-react'
 import type { Message } from '../types/chat'
 import MarkdownRender from './MarkdownRender'
 
@@ -9,18 +10,18 @@ interface Props {
 
 function BotAvatar() {
   return (
-    <div className="avatar-glow flex h-8 w-8 shrink-0 items-center justify-center rounded-full doubao-gradient text-[12px] font-bold text-white">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-accent text-[12px] font-bold text-white glow-sm">
       AI
     </div>
   )
 }
 
 function ThumbsUpIcon({ filled }: { filled: boolean }) {
-  return <span className={`text-base leading-none ${filled ? '' : 'opacity-40'}`}>👍</span>
+  return <span className={`text-base leading-none ${filled ? '' : 'opacity-30'}`}>👍</span>
 }
 
 function ThumbsDownIcon({ filled }: { filled: boolean }) {
-  return <span className={`text-base leading-none ${filled ? '' : 'opacity-40'}`}>👎</span>
+  return <span className={`text-base leading-none ${filled ? '' : 'opacity-30'}`}>👎</span>
 }
 
 export default function ChatBubble({ message, onFeedback }: Props) {
@@ -32,14 +33,13 @@ export default function ChatBubble({ message, onFeedback }: Props) {
   if (isUser) {
     return (
       <div className="animate-fade-in-up flex justify-end py-1.5">
-        <div className="max-w-[78%] rounded-2xl rounded-tr-sm bg-[#f3f4ff] px-4 py-2.5 text-[15px] leading-7 text-gray-800">
+        <div className="max-w-[78%] rounded-2xl rounded-tr-sm bg-[#667eea]/10 border border-[#667eea]/20 px-4 py-2.5 text-[15px] leading-7 text-[#c5c8d4]">
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
       </div>
     )
   }
 
-  // 流式输出前不显示空气泡
   if (!message.content) return null
 
   const fb = message.feedback
@@ -70,15 +70,20 @@ export default function ChatBubble({ message, onFeedback }: Props) {
     <div className="animate-fade-in-up flex gap-3 py-1.5">
       <BotAvatar />
       <div className="min-w-0 flex-1 pt-1">
-        <p className="mb-1 text-[13px] font-medium text-gray-500">智能助手</p>
-        <MarkdownRender content={message.content} />
+        <p className="mb-1 flex items-center gap-1 text-[13px] font-mono text-[#667eea]">
+          <Bot size={15} className="text-[#667eea]" />
+          助手
+        </p>
+        <div className="prose prose-sm prose-invert prose-dark max-w-none">
+          <MarkdownRender content={message.content} />
+        </div>
         <div className="mt-2 flex items-center gap-1">
           <button
             onClick={() => handleClick('like')}
             className={`rounded-md p-1.5 transition-colors ${
               fb === 'like'
-                ? 'text-[#6366f1] bg-[#eef2ff]'
-                : 'text-gray-400 hover:text-[#6366f1] hover:bg-[#f5f3ff]'
+                ? 'text-[#667eea] bg-[#667eea]/15'
+                : 'text-[#5c6070] hover:text-[#667eea] hover:bg-[#667eea]/10'
             }`}
             title="有用"
           >
@@ -88,8 +93,8 @@ export default function ChatBubble({ message, onFeedback }: Props) {
             onClick={() => handleClick('dislike')}
             className={`rounded-md p-1.5 transition-colors ${
               fb === 'dislike'
-                ? 'text-[#6366f1] bg-[#eef2ff]'
-                : 'text-gray-400 hover:text-[#6366f1] hover:bg-[#f5f3ff]'
+                ? 'text-[#667eea] bg-[#667eea]/15'
+                : 'text-[#5c6070] hover:text-[#667eea] hover:bg-[#667eea]/10'
             }`}
             title="没用"
           >
@@ -102,8 +107,8 @@ export default function ChatBubble({ message, onFeedback }: Props) {
               ref={inputRef}
               value={commentText}
               onChange={(e) => setCommentText(e.target.value.slice(0, 500))}
-              placeholder="请说明不满意的原因（选填）"
-              className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-300 focus:border-[#6366f1]"
+              placeholder="说明不满意的原因（选填）"
+              className="w-full resize-none rounded-lg border border-[#1c1f2e] bg-[#0d0f1a] px-3 py-2 text-[13px] text-[#c5c8d4] outline-none transition-colors placeholder:text-[#5c6070] focus:border-[#667eea]/40"
               rows={2}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -115,13 +120,13 @@ export default function ChatBubble({ message, onFeedback }: Props) {
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={cancelDislike}
-                className="rounded-md px-3 py-1 text-[12px] text-gray-400 transition-colors hover:text-gray-600"
+                className="rounded-md px-3 py-1 text-[12px] text-[#5c6070] transition-colors hover:text-[#9ca0b0]"
               >
                 取消
               </button>
               <button
                 onClick={submitDislike}
-                className="rounded-md bg-[#6366f1] px-3 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#4f46e5]"
+                className="rounded-md bg-[#667eea] px-3 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#4f6bff]"
               >
                 提交
               </button>

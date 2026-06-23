@@ -33,21 +33,21 @@ export default function ChatInput({ onSend, disabled }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 sm:px-4 pb-2 pt-2">
-      <div className="input-shadow flex items-end gap-2 rounded-2xl border border-[#e8e8ea] bg-white px-3 sm:px-4 py-2.5 transition-all">
+      <div className="input-glow flex items-end gap-2 rounded-2xl border border-[#1c1f2e] bg-[#0d0f1a] px-3 sm:px-4 py-2.5 transition-all">
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="给智能助手发送消息"
+          placeholder="输入问题，查询调度接口文档..."
           rows={1}
           disabled={disabled}
-          className="max-h-28 flex-1 resize-none bg-transparent text-[15px] leading-7 outline-none placeholder:text-[#c0c0c4] disabled:opacity-50"
+          className="max-h-28 flex-1 resize-none bg-transparent text-[15px] leading-7 text-[#c5c8d4] outline-none placeholder:text-[#5c6070] disabled:opacity-50 font-mono"
         />
         <button
           onClick={handleSend}
           disabled={!canSend}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg doubao-gradient text-white transition-all hover:shadow-lg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-accent text-white transition-all hover:shadow-lg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-20"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -59,8 +59,8 @@ export default function ChatInput({ onSend, disabled }: Props) {
           </svg>
         </button>
       </div>
-      <p className="mt-2 text-center text-[11px] sm:text-[12px] text-[#b0b0b4]">
-        Enter 发送 · Shift + Enter 换行
+      <p className="mt-2 text-center text-[11px] sm:text-[12px] text-[#5c6070] font-mono">
+        Enter 发送 · Shift+Enter 换行
       </p>
     </div>
   )

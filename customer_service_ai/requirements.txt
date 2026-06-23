@@ -27,6 +27,17 @@ tenacity==9.0.0
 aiosqlite==0.20.0
 greenlet==3.1.1
 
+# Rate limiting & Circuit breaker
+slowapi>=0.1.9
+pybreaker>=1.2
+
+# Task queue (Redis + Celery)
+redis>=5.2
+celery>=5.4
+
+# JWT
+PyJWT>=2.10
+
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.25.2

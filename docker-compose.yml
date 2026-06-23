@@ -1,7 +1,12 @@
 services:
+  redis:
+    image: bitnami/redis:latest
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    restart: unless-stopped
+
   backend:
-    platform: linux/amd64
-    image: ${REGISTRY_URL:-}agent-support-backend:latest
+    image: agent-support-backend:latest
     build:
       context: ./customer_service_ai
       dockerfile: Dockerfile
@@ -11,11 +16,34 @@ services:
       - chat_data:/app/data
     env_file:
       - ./customer_service_ai/.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - http_proxy=
+      - https_proxy=
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+    restart: unless-stopped
+
+  worker:
+    image: agent-support-backend:latest
+    build:
+      context: ./customer_service_ai
+      dockerfile: Dockerfile
+    command: celery -A app.celery_app worker -l info -Q celery --concurrency=1
+    volumes:
+      - chat_data:/app/data
+    env_file:
+      - ./customer_service_ai/.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - http_proxy=
+      - https_proxy=
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
     restart: unless-stopped
 
   frontend:
-    platform: linux/amd64
-    image: ${REGISTRY_URL:-}agent-support-frontend:latest
+    image: agent-support-frontend:latest
     build:
       context: ./chat-ui
       dockerfile: Dockerfile

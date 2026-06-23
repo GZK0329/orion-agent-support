@@ -2,24 +2,32 @@
 FastAPI 应用入口
 类似 Spring Boot 的 Application 类
 """
+import asyncio
 import sys
+import time
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.config import router as config_router
 from app.api.demos import router as demos_router
+from app.api.health import router as health_router, record_start_time
 from app.api.history import router as history_router
 from app.api.documents import router as documents_router
 from app.api.feedback import router as feedback_router
 from app.api.error_logs import router as error_logs_router
-from app.database import init_db
+from app.database import async_engine, engine, init_db
 from app.middleware import RequestIdMiddleware
+from app.middleware.rate_limit import limiter
 from app.models.schemas import ErrorResponse
 
 
@@ -43,13 +51,52 @@ def setup_logging():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用启动/关闭生命周期（类似 Spring Boot 的 ApplicationRunner）"""
+    """应用启动/关闭生命周期"""
     setup_logging()
     logger.info("应用启动，正在初始化数据库…")
     init_db()
     logger.info("数据库初始化完成")
+
+    from app.services.fts_service import fts_search
+    try:
+        fts_search.create_index()
+        logger.info("FTS5 索引已就绪")
+    except Exception as e:
+        logger.warning(f"FTS5 索引初始化失败: {e}")
+
+    app.state.httpx_client = httpx.AsyncClient(timeout=30)
+    record_start_time()
+    logger.info("HTTPX 客户端已创建，服务就绪")
+
     yield
-    logger.info("应用关闭")
+
+    logger.info("开始优雅关闭...")
+    try:
+        await app.state.httpx_client.aclose()
+        logger.info("HTTPX 客户端已关闭")
+    except Exception as e:
+        logger.warning(f"HTTPX 客户端关闭异常: {e}")
+
+    try:
+        await async_engine.dispose()
+        logger.info("异步数据库引擎已关闭")
+    except Exception as e:
+        logger.warning(f"数据库引擎关闭异常: {e}")
+
+    try:
+        engine.dispose()
+        logger.info("同步数据库引擎已关闭")
+    except Exception as e:
+        logger.warning(f"同步数据库引擎关闭异常: {e}")
+
+    try:
+        from app.services.fts_service import fts_search
+        fts_search.close()
+        logger.info("FTS5 索引已关闭")
+    except Exception as e:
+        logger.warning(f"FTS5 索引关闭异常: {e}")
+
+    logger.info("应用已关闭")
 
 
 app = FastAPI(
@@ -58,6 +105,9 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(RequestIdMiddleware)
 
@@ -106,8 +156,10 @@ app.include_router(documents_router)
 app.include_router(feedback_router)
 app.include_router(error_logs_router)
 app.include_router(config_router)
+app.include_router(health_router)
 
 
 @app.get("/", summary="健康检查")
 async def root():
+    """根路径重定向到健康检查"""
     return {"message": "智能客服助手已启动", "version": "0.2.0"}

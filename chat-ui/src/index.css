@@ -4,41 +4,77 @@
 
 body {
   margin: 0;
+  background: #07080e;
+  color: #e3e5ed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .chat-scroll::-webkit-scrollbar {
-  width: 4px;
+  width: 5px;
 }
 .chat-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 .chat-scroll::-webkit-scrollbar-thumb {
-  background: #e0e0e0;
-  border-radius: 2px;
+  background: #2a2d3e;
+  border-radius: 3px;
 }
 .chat-scroll::-webkit-scrollbar-thumb:hover {
-  background: #c0c0c0;
+  background: #3c4050;
 }
 .chat-scroll {
   scroll-behavior: smooth;
 }
 
-/* 豆包风格消息气泡背景 */
-.doubao-gradient {
+.gradient-accent {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-/* 头像光晕 */
-.avatar-glow {
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #a855f7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-/* 输入框阴影 */
-.input-shadow {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.02);
+.glow-sm {
+  box-shadow: 0 0 12px rgba(102, 126, 234, 0.15);
 }
-.input-shadow:focus-within {
-  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.12), 0 1px 6px rgba(0, 0, 0, 0.04);
+
+.glow-md {
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.2);
+}
+
+.input-glow {
+  box-shadow: 0 0 0 1px rgba(102, 126, 234, 0.1);
+}
+.input-glow:focus-within {
+  box-shadow: 0 0 0 1px rgba(102, 126, 234, 0.4), 0 0 24px rgba(102, 126, 234, 0.1);
+}
+
+.card-glow {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+}
+
+.prose-dark {
+  color: #c5c8d4;
+}
+.prose-dark strong {
+  color: #e3e5ed;
+}
+.prose-dark code {
+  color: #a5b4fc;
+  background: rgba(102, 126, 234, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.875em;
+}
+.prose-dark pre {
+  background: #0d0f1a !important;
+  border: 1px solid #1c1f2e;
+  border-radius: 8px;
+}
+.prose-dark a {
+  color: #667eea;
 }

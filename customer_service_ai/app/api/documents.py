@@ -1,8 +1,11 @@
 """
 文档管理 API
 支持上传、列表、删除、全量重建，上传后自动增量导入向量库
-管理员权限控制：需要 X-Admin-Token header
+知识库版本管理：每次全量重建自动创建版本，支持列表和回滚
+管理员权限控制：需要 X-Admin-Token 或 JWT Bearer token
 """
+import hashlib
+import json
 import shutil
 from pathlib import Path
 
@@ -12,7 +15,16 @@ from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, T
 from pydantic import BaseModel
 
 from app.api.auth import validate_admin_token
-from app.services.rag_service import add_documents, build_vector_store, delete_by_source, get_text_splitter
+from app.services.fts_service import fts_search
+from app.services.rag_service import (
+    add_documents,
+    build_vector_store,
+    create_version,
+    delete_by_source,
+    get_text_splitter,
+    list_versions,
+    rollback_version,
+)
 
 router = APIRouter(prefix="/documents", tags=["文档管理"])
 DOCS_DIR = Path(__file__).parent.parent / "data" / "docs"
@@ -32,7 +44,6 @@ def _require_admin(x_admin_token: str = Header(default="")) -> None:
 
 
 def _safe_path(filename: str) -> Path:
-    """构造安全路径，防止路径穿越（如 ../../etc/passwd）"""
     target = (DOCS_DIR / filename).resolve()
     if not target.is_relative_to(DOCS_DIR.resolve()):
         raise HTTPException(status_code=400, detail="非法文件名")
@@ -54,13 +65,23 @@ def _list_files() -> list[FileItem]:
     return items
 
 
+def _compute_manifest() -> dict:
+    manifest = {}
+    if not DOCS_DIR.exists():
+        return manifest
+    for f in sorted(DOCS_DIR.iterdir()):
+        if f.suffix.lower() in ALLOWED_EXT:
+            content = f.read_bytes()
+            manifest[f.name] = hashlib.md5(content).hexdigest()
+    return manifest
+
+
 def _split_text(texts: list[Document]) -> list[Document]:
     return get_text_splitter().split_documents(texts)
 
 
 @router.get("/")
 async def list_documents(x_admin_token: str = Header(default="")):
-    """列出已上传的文档（仅管理员）"""
     _require_admin(x_admin_token)
     return _list_files()
 
@@ -70,7 +91,6 @@ async def upload_document(
     file: UploadFile = File(...),
     x_admin_token: str = Header(default=""),
 ):
-    """上传文档并自动导入向量库（仅管理员）"""
     _require_admin(x_admin_token)
 
     filename = file.filename or ""
@@ -103,11 +123,12 @@ async def upload_document(
 
 @router.post("/reindex")
 async def reindex_documents(x_admin_token: str = Header(default="")):
-    """全量重建向量库（基于 data/docs/ 下所有文档，仅管理员）"""
     _require_admin(x_admin_token)
 
     if not DOCS_DIR.exists() or not any(DOCS_DIR.iterdir()):
         raise HTTPException(status_code=400, detail="文档目录为空，请先上传文档")
+
+    manifest = _compute_manifest()
 
     documents: list[Document] = []
     for ext, loader_cls in [("**/*.txt", TextLoader), ("**/*.md", TextLoader), ("**/*.pdf", PyPDFLoader)]:
@@ -120,8 +141,22 @@ async def reindex_documents(x_admin_token: str = Header(default="")):
         if src:
             chunk.metadata["source"] = str(Path(src).resolve().relative_to(DOCS_DIR.resolve()))
 
+    version_id = create_version(
+        description=f"全量重建 {len(chunks)} 块",
+        file_count=len(manifest),
+        chunk_count=len(chunks),
+        file_manifest=manifest,
+    )
+
     build_vector_store(chunks)
-    return {"message": f"向量库重建完成，共 {len(chunks)} 个文本块", "total_chunks": len(chunks)}
+    fts_search.delete_all()
+    fts_search.index_documents(chunks)
+
+    return {
+        "message": f"向量库重建完成，共 {len(chunks)} 个文本块",
+        "total_chunks": len(chunks),
+        "version_id": version_id,
+    }
 
 
 @router.delete("/{filename}", status_code=status.HTTP_204_NO_CONTENT)
@@ -129,8 +164,25 @@ async def delete_document(
     filename: str,
     x_admin_token: str = Header(default=""),
 ):
-    """删除文档并从向量库移除（仅管理员）"""
     _require_admin(x_admin_token)
     delete_by_source(filename)
     target = _safe_path(filename)
     target.unlink(missing_ok=True)
+
+
+# ── 知识库版本管理 ─────────────────────────────────────────────────
+
+
+@router.get("/versions")
+async def get_versions(x_admin_token: str = Header(default="")):
+    _require_admin(x_admin_token)
+    return list_versions()
+
+
+@router.post("/versions/{version_id}/rollback")
+async def rollback(version_id: int, x_admin_token: str = Header(default="")):
+    _require_admin(x_admin_token)
+    ok = rollback_version(version_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="回滚失败")
+    return {"message": f"已回滚到版本 #{version_id}"}
