@@ -18,14 +18,6 @@ if [[ "$(uname -m)" == "arm64" ]]; then
   _IS_ARM=true
 fi
 
-DC_FILES=("-f" "docker-compose.yml")
-# 主动要求 x86 构建时（如推送到 x86 服务器），加上 x86 override
-if [ "${FORCE_X86:-}" == "true" ] || [ "$1" == "push-registry" ]; then
-  DC_FILES+=("-f" "docker-compose.x86.yml")
-fi
-
-_DC="docker compose ${DC_FILES[*]}"
-
 _clear_docker_proxy() {
   if [ -f "$DOCKER_CONFIG" ]; then
     python3 -c "
@@ -203,17 +195,24 @@ case "$CMD" in
     _build_frontend
     _clear_docker_proxy
     echo "📦 构建 x86 镜像并导出 tar..."
-    docker compose -f docker-compose.yml -f docker-compose.x86.yml build
+    # 用 registry 前缀构建（如有），避免覆盖本地 ARM 镜像
+    BACKEND_IMAGE="${REGISTRY_URL:-}agent-support-backend:latest" \
+    FRONTEND_IMAGE="${REGISTRY_URL:-}agent-support-frontend:latest" \
+      docker compose -f docker-compose.yml -f docker-compose.x86.yml build
     _restore_docker_proxy
     mkdir -p /tmp/agent-support-images
-    # 确保第三方依赖镜像为 x86 架构
+    # 确保 redis 为 x86 架构（会临时覆盖本地，导出后恢复）
     docker pull --platform linux/amd64 bitnami/redis:latest 2>&1 | tail -3
-    # 导出所有服务镜像（含 redis 等第三方镜像）
+    # 导出所有服务镜像
     docker save \
       "${REGISTRY_URL:-}agent-support-backend:latest" \
       "${REGISTRY_URL:-}agent-support-frontend:latest" \
       bitnami/redis:latest \
       -o /tmp/agent-support-images/all-images.tar
+    # 恢复本地 ARM redis
+    if [ "$_IS_ARM" == "true" ]; then
+      docker pull --platform linux/arm64 bitnami/redis:latest 2>&1 | tail -1
+    fi
     echo "✅ 已导出："
     ls -lh /tmp/agent-support-images/
     echo ""
@@ -234,16 +233,22 @@ case "$CMD" in
     _build_frontend
     _clear_docker_proxy
     echo "🚀 构建 x86 镜像并推送到 ${REGISTRY_URL}..."
-    docker compose -f docker-compose.yml -f docker-compose.x86.yml build
-    # 推送自建镜像
+    # 用 registry 前缀构建，x86 镜像 tag 带前缀，不覆盖本地 ARM 镜像
+    BACKEND_IMAGE="${REGISTRY_URL}agent-support-backend:latest" \
+    FRONTEND_IMAGE="${REGISTRY_URL}agent-support-frontend:latest" \
+      docker compose -f docker-compose.yml -f docker-compose.x86.yml build
+    # 推送自建镜像（已是 registry 前缀 tag，直接 push）
     docker push "${REGISTRY_URL}agent-support-backend:latest"
     docker push "${REGISTRY_URL}agent-support-frontend:latest"
-    # 推送第三方依赖镜像（确保 x86 架构）
+    # 推送 redis：拉 x86 → tag → push → 恢复本地 ARM
     docker pull --platform linux/amd64 bitnami/redis:latest 2>&1 | tail -1
-    docker tag bitnami/redis:latest "${REGISTRY_URL}bitnami/redis:latest" 2>/dev/null || true
-    docker push "${REGISTRY_URL}bitnami/redis:latest" 2>/dev/null || echo "⚠️  bitnami/redis 推送失败"
+    docker tag bitnami/redis:latest "${REGISTRY_URL}bitnami/redis:latest"
+    docker push "${REGISTRY_URL}bitnami/redis:latest"
+    if [ "$_IS_ARM" == "true" ]; then
+      docker pull --platform linux/arm64 bitnami/redis:latest 2>&1 | tail -1
+    fi
     _restore_docker_proxy
-    echo "✅ 推送完成！"
+    echo "✅ 推送完成！本地 ARM 镜像未受影响。"
     echo ""
     echo "服务器操作："
     echo "  1. daemon.json 配置 insecure-registries: [\"${REGISTRY_URL%/}\"]"
