@@ -206,6 +206,8 @@ case "$CMD" in
     docker compose -f docker-compose.yml -f docker-compose.x86.yml build
     _restore_docker_proxy
     mkdir -p /tmp/agent-support-images
+    # 确保第三方依赖镜像为 x86 架构
+    docker pull --platform linux/amd64 bitnami/redis:latest 2>&1 | tail -3
     # 导出所有服务镜像（含 redis 等第三方镜像）
     docker save \
       "${REGISTRY_URL:-}agent-support-backend:latest" \
@@ -236,9 +238,10 @@ case "$CMD" in
     # 推送自建镜像
     docker push "${REGISTRY_URL}agent-support-backend:latest"
     docker push "${REGISTRY_URL}agent-support-frontend:latest"
-    # 推送第三方依赖镜像（确保已在本地 pull 或 load）
+    # 推送第三方依赖镜像（确保 x86 架构）
+    docker pull --platform linux/amd64 bitnami/redis:latest 2>&1 | tail -1
     docker tag bitnami/redis:latest "${REGISTRY_URL}bitnami/redis:latest" 2>/dev/null || true
-    docker push "${REGISTRY_URL}bitnami/redis:latest" 2>/dev/null || echo "⚠️  bitnami/redis 推送失败，请确认镜像已在本地：docker pull bitnami/redis:latest"
+    docker push "${REGISTRY_URL}bitnami/redis:latest" 2>/dev/null || echo "⚠️  bitnami/redis 推送失败"
     _restore_docker_proxy
     echo "✅ 推送完成！"
     echo ""
