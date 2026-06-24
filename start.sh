@@ -206,19 +206,22 @@ case "$CMD" in
     docker compose -f docker-compose.yml -f docker-compose.x86.yml build
     _restore_docker_proxy
     mkdir -p /tmp/agent-support-images
-    docker save "${REGISTRY_URL:-}agent-support-backend:latest" -o /tmp/agent-support-images/backend.tar
-    docker save "${REGISTRY_URL:-}agent-support-frontend:latest" -o /tmp/agent-support-images/frontend.tar
+    # 导出所有服务镜像（含 redis 等第三方镜像）
+    docker save \
+      "${REGISTRY_URL:-}agent-support-backend:latest" \
+      "${REGISTRY_URL:-}agent-support-frontend:latest" \
+      bitnami/redis:latest \
+      -o /tmp/agent-support-images/all-images.tar
     echo "✅ 已导出："
     ls -lh /tmp/agent-support-images/
     echo ""
-    echo "部署到服务器（二选一）："
+    echo "部署到服务器："
     echo ""
-    echo "  scp -r /tmp/agent-support-images user@server:/tmp/"
-    echo "  scp docker-compose.yml customer_service_ai/.env user@server:/opt/agent-support/"
+    echo "  scp /tmp/agent-support-images/all-images.tar user@server:/tmp/"
+    echo "  scp docker-compose.yml docker-compose.x86.yml customer_service_ai/.env user@server:/opt/agent-support/"
     echo "  ssh user@server"
-    echo "  docker load -i /tmp/agent-support-images/backend.tar"
-    echo "  docker load -i /tmp/agent-support-images/frontend.tar"
-    echo "  cd /opt/agent-support && docker compose up -d"
+    echo "  docker load -i /tmp/all-images.tar"
+    echo "  cd /opt/agent-support && docker compose -f docker-compose.yml -f docker-compose.x86.yml up -d"
     ;;
   push-registry)
     if [ -z "${REGISTRY_URL:-}" ]; then
@@ -230,15 +233,20 @@ case "$CMD" in
     _clear_docker_proxy
     echo "🚀 构建 x86 镜像并推送到 ${REGISTRY_URL}..."
     docker compose -f docker-compose.yml -f docker-compose.x86.yml build
+    # 推送自建镜像
     docker push "${REGISTRY_URL}agent-support-backend:latest"
     docker push "${REGISTRY_URL}agent-support-frontend:latest"
+    # 推送第三方依赖镜像（确保已在本地 pull 或 load）
+    docker tag bitnami/redis:latest "${REGISTRY_URL}bitnami/redis:latest" 2>/dev/null || true
+    docker push "${REGISTRY_URL}bitnami/redis:latest" 2>/dev/null || echo "⚠️  bitnami/redis 推送失败，请确认镜像已在本地：docker pull bitnami/redis:latest"
     _restore_docker_proxy
     echo "✅ 推送完成！"
     echo ""
     echo "服务器操作："
     echo "  1. daemon.json 配置 insecure-registries: [\"${REGISTRY_URL%/}\"]"
-    echo "  2. 上传 docker-compose.yml 和 .env 到 /opt/agent-support/"
-    echo "  3. cd /opt/agent-support && docker compose up -d"
+    echo "  2. 修改 docker-compose.yml，将 redis 镜像改为 ${REGISTRY_URL}bitnami/redis:latest"
+    echo "  3. 上传 docker-compose.yml 和 .env 到 /opt/agent-support/"
+    echo "  4. cd /opt/agent-support && docker compose up -d"
     ;;
   *)
     echo "用法: ./start.sh [命令]"
