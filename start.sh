@@ -247,7 +247,10 @@ case "$CMD" in
     echo ""
     echo "服务器操作："
     echo "  1. daemon.json 配置 insecure-registries: [\"${REGISTRY_URL%/}\"]"
-    echo "  2. .env 中添加 REDIS_IMAGE=${REGISTRY_URL}bitnami/redis:latest"
+    echo "  2. .env 中添加以下变量："
+    echo "       BACKEND_IMAGE=${REGISTRY_URL}agent-support-backend:latest"
+    echo "       FRONTEND_IMAGE=${REGISTRY_URL}agent-support-frontend:latest"
+    echo "       REDIS_IMAGE=${REGISTRY_URL}bitnami/redis:latest"
     echo "  3. 上传 docker-compose.yml 和 .env 到 /opt/agent-support/"
     echo "  4. cd /opt/agent-support && docker compose up -d"
     ;;

@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: agent-support-backend:latest
+    image: ${BACKEND_IMAGE:-agent-support-backend:latest}
     build:
       context: ./customer_service_ai
       dockerfile: Dockerfile
@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: agent-support-backend:latest
+    image: ${BACKEND_IMAGE:-agent-support-backend:latest}
     build:
       context: ./customer_service_ai
       dockerfile: Dockerfile
@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: agent-support-frontend:latest
+    image: ${FRONTEND_IMAGE:-agent-support-frontend:latest}
     build:
       context: ./chat-ui
       dockerfile: Dockerfile
