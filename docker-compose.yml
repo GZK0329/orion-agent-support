@@ -1,6 +1,6 @@
 services:
   redis:
-    image: bitnami/redis:latest
+    image: ${REDIS_IMAGE:-bitnami/redis:latest}
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
     restart: unless-stopped
