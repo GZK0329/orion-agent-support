@@ -219,10 +219,15 @@ case "$CMD" in
     echo "部署到服务器："
     echo ""
     echo "  scp /tmp/agent-support-images/all-images.tar user@server:/tmp/"
-    echo "  scp docker-compose.yml docker-compose.x86.yml customer_service_ai/.env user@server:/opt/agent-support/"
+    echo "  scp docker-compose.yml docker-compose.x86.yml .env user@server:/opt/agent-support/"
     echo "  ssh user@server"
     echo "  docker load -i /tmp/all-images.tar"
     echo "  cd /opt/agent-support && docker compose -f docker-compose.yml -f docker-compose.x86.yml up -d"
+    echo ""
+    echo "注意：如果 docker compose 报 Dockerfile 找不到，说明 .env 中缺少以下变量："
+    echo "    BACKEND_IMAGE=${REGISTRY_URL:-}agent-support-backend:latest"
+    echo "    FRONTEND_IMAGE=${REGISTRY_URL:-}agent-support-frontend:latest"
+    echo "    REDIS_IMAGE=bitnami/redis:latest"
     ;;
   push-registry)
     if [ -z "${REGISTRY_URL:-}" ]; then
@@ -257,7 +262,7 @@ case "$CMD" in
     echo "       FRONTEND_IMAGE=${REGISTRY_URL}agent-support-frontend:latest"
     echo "       REDIS_IMAGE=${REGISTRY_URL}bitnami/redis:latest"
     echo "  3. 上传 docker-compose.yml 和 .env 到 /opt/agent-support/"
-    echo "  4. cd /opt/agent-support && docker compose up -d"
+    echo "  4. cd /opt/agent-support && docker compose pull && docker compose up -d"
     ;;
   *)
     echo "用法: ./start.sh [命令]"
