@@ -23,7 +23,7 @@ class OpenAICompatibleEmbeddings(Embeddings):
         response = self.client.embeddings.create(
             model=self.model,
             input=batch,
-            timeout=30,
+            timeout=(10, 30),  # connect=10s, read=30s
         )
         return [item.embedding for item in response.data]
 
