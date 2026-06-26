@@ -1,0 +1,11 @@
+# 生产部署覆盖：去掉 build: 段，服务器直接拉 registry 镜像
+# 使用方式：docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+services:
+  backend:
+    build: !reset null
+
+  worker:
+    build: !reset null
+
+  frontend:
+    build: !reset null

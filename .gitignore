@@ -36,3 +36,4 @@ data/chat.db
 
 # File index (auto-generated)
 data/vector_db/.file_index.json
+server.env

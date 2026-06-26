@@ -195,39 +195,35 @@ case "$CMD" in
     _build_frontend
     _clear_docker_proxy
     echo "📦 构建 x86 镜像并导出 tar..."
-    # 用 registry 前缀构建（如有），避免覆盖本地 ARM 镜像
-    BACKEND_IMAGE="${REGISTRY_URL:-}agent-support-backend:latest" \
-    FRONTEND_IMAGE="${REGISTRY_URL:-}agent-support-frontend:latest" \
-      docker compose -f docker-compose.yml -f docker-compose.x86.yml build
+    # 用默认 tag 构建（会临时覆盖本地 ARM，但 export 是一次性操作）
+    docker compose -f docker-compose.yml -f docker-compose.x86.yml build
     _restore_docker_proxy
     mkdir -p /tmp/agent-support-images
     # 确保 redis 为 x86 架构（会临时覆盖本地，导出后恢复）
     docker pull --platform linux/amd64 bitnami/redis:latest 2>&1 | tail -3
     # 导出所有服务镜像
     docker save \
-      "${REGISTRY_URL:-}agent-support-backend:latest" \
-      "${REGISTRY_URL:-}agent-support-frontend:latest" \
+      agent-support-backend:latest \
+      agent-support-frontend:latest \
       bitnami/redis:latest \
       -o /tmp/agent-support-images/all-images.tar
     # 恢复本地 ARM redis
     if [ "$_IS_ARM" == "true" ]; then
       docker pull --platform linux/arm64 bitnami/redis:latest 2>&1 | tail -1
     fi
-    echo "✅ 已导出："
+    echo "✅ 已导出（xz 压缩中...）"
+    xz -f /tmp/agent-support-images/all-images.tar 2>/dev/null || true
     ls -lh /tmp/agent-support-images/
     echo ""
-    echo "部署到服务器："
+    echo "部署到服务器（不需要 registry，不需要 env 变量）："
     echo ""
-    echo "  scp /tmp/agent-support-images/all-images.tar user@server:/tmp/"
-    echo "  scp docker-compose.yml docker-compose.x86.yml .env user@server:/opt/agent-support/"
+    echo "  scp /tmp/agent-support-images/all-images.tar.xz user@server:/tmp/"
+    echo "  scp docker-compose.yml docker-compose.prod.yml user@server:/opt/agent-support/"
     echo "  ssh user@server"
-    echo "  docker load -i /tmp/all-images.tar"
-    echo "  cd /opt/agent-support && docker compose -f docker-compose.yml -f docker-compose.x86.yml up -d"
+    echo "  xz -d /tmp/all-images.tar.xz && docker load -i /tmp/all-images.tar"
+    echo "  cd /opt/agent-support && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d"
     echo ""
-    echo "注意：如果 docker compose 报 Dockerfile 找不到，说明 .env 中缺少以下变量："
-    echo "    BACKEND_IMAGE=${REGISTRY_URL:-}agent-support-backend:latest"
-    echo "    FRONTEND_IMAGE=${REGISTRY_URL:-}agent-support-frontend:latest"
-    echo "    REDIS_IMAGE=bitnami/redis:latest"
+    echo "本地 ARM 镜像已被覆盖，下次本地部署请运行：./start.sh up"
     ;;
   push-registry)
     if [ -z "${REGISTRY_URL:-}" ]; then
@@ -255,14 +251,30 @@ case "$CMD" in
     _restore_docker_proxy
     echo "✅ 推送完成！本地 ARM 镜像未受影响。"
     echo ""
-    echo "服务器操作："
-    echo "  1. daemon.json 配置 insecure-registries: [\"${REGISTRY_URL%/}\"]"
-    echo "  2. .env 中添加以下变量："
-    echo "       BACKEND_IMAGE=${REGISTRY_URL}agent-support-backend:latest"
-    echo "       FRONTEND_IMAGE=${REGISTRY_URL}agent-support-frontend:latest"
-    echo "       REDIS_IMAGE=${REGISTRY_URL}bitnami/redis:latest"
-    echo "  3. 上传 docker-compose.yml 和 .env 到 /opt/agent-support/"
-    echo "  4. cd /opt/agent-support && docker compose pull && docker compose up -d"
+    # 生成服务器部署文件
+    cat > server.env <<-EOF
+# 服务器部署配置 — 由 start.sh push-registry 自动生成
+BACKEND_IMAGE=${REGISTRY_URL}agent-support-backend:latest
+FRONTEND_IMAGE=${REGISTRY_URL}agent-support-frontend:latest
+REDIS_IMAGE=${REGISTRY_URL}bitnami/redis:latest
+EOF
+    echo "📄 已生成 server.env，部署步骤："
+    echo ""
+    echo "--- 服务器操作（以下需通过堡垒机执行）---"
+    echo ""
+    echo "  1. docker daemon 配置 insecure-registries（仅首次）："
+    echo '      编辑 /etc/docker/daemon.json，加入：'
+    echo '        { "insecure-registries": ["'${REGISTRY_URL%/}'"] }'
+    echo '      然后 sudo systemctl restart docker'
+    echo ""
+    echo "  2. 上传文件到服务器任意目录（通过堡垒机）："
+    echo "       scp docker-compose.yml docker-compose.prod.yml server.env user@bastion:~/"
+    echo ""
+    echo "  3. 在服务器上执行："
+    echo "       cp server.env .env"
+    echo "       docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d"
+    echo ""
+    echo "  完成！不再需要手动设环境变量。"
     ;;
   *)
     echo "用法: ./start.sh [命令]"
